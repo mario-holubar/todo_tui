@@ -1,0 +1,12 @@
+[package]
+name = "todo_tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratatui = "0.30.1"
+crossterm = "0.28"
+
+[[bin]]
+name = "todo_tui"
+path = "src/main.rs"
