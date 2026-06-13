@@ -1,5 +1,41 @@
 use std::fs;
 
+/// Represents a single todo item.
+#[derive(Debug, Clone)]
+struct Task {
+    title: String,
+    completed: bool,
+}
+
+/// Parse the markdown todo list content into a vector of [`Task`] structs.
+///
+/// Each line matching `- [ ]` (unchecked) or `- [x]`/`- [X]` (checked)
+/// is converted into a `Task`. All other lines are skipped.
+fn parse_tasks(content: &str) -> Vec<Task> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with("- [") {
+                return None;
+            }
+
+            // Find the closing bracket
+            let close_bracket = trimmed.find(']')?;
+            let checkbox_content = trimmed[3..close_bracket].trim();
+
+            let completed = matches!(checkbox_content, "x" | "X");
+            let title = trimmed[close_bracket + 1..].trim().to_string();
+
+            if title.is_empty() {
+                return None;
+            }
+
+            Some(Task { title, completed })
+        })
+        .collect()
+}
+
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -30,6 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read the todo file
     let content = fs::read_to_string("todo.md")?;
+    let tasks = parse_tasks(&content);
 
     loop {
         terminal.draw(|frame| {
@@ -51,8 +88,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             frame.render_widget(header, chunks[0]);
 
-            // Render file content in the main area with wrapping and block
-            let text = Text::from(content.as_str());
+            // Render parsed tasks in the main area with wrapping and block
+            let task_lines: Vec<Line> = tasks
+                .iter()
+                .map(|task| {
+                    // Non-breaking space so strikethrough applies
+                    let marker = "•";
+                    let title = task.title.replace(" ", "\u{00A0}");
+                    let style = if task.completed {
+                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT)
+                    } else {
+                        Style::default()
+                    };
+                    Line::styled(
+                        format!("{} {}", marker, title),
+                        style,
+                    )
+                })
+                .collect();
+            let text = Text::from(task_lines);
             let paragraph = Paragraph::new(text)
                 .wrap(Wrap { trim: true })
                 .block(Block::default().borders(Borders::ALL).title(" todo.md "));

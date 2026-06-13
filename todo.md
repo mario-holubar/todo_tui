@@ -1,6 +1,6 @@
 # Sample Todo List
 
-- [ ] Buy groceries
+- [x] Buy groceries
 - [ ] Walk the dog
 - [ ] Read a book
 - [ ] Exercise
