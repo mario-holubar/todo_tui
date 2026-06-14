@@ -134,6 +134,16 @@ impl Tui {
             InputMode::Text => match key_event.code {
                 // Insert mode
                 KeyCode::Enter | KeyCode::Esc => {
+                    let idx = self.selection.as_mut().unwrap();
+                    if self.tasks[*idx].title.is_empty() {
+                        self.tasks.remove(*idx);
+                        if self.tasks.is_empty() {
+                            self.selection = None;
+                        }
+                        else {
+                            *idx = idx.saturating_sub(1);
+                        }
+                    }
                     self.input_mode = InputMode::Normal
                 }
                 KeyCode::Tab => {
