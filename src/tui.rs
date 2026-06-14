@@ -54,6 +54,14 @@ impl Tui {
         assert_eq!(content, reconstructed_lines.join("\n"));
     }
 
+    fn has_children(&self, idx: usize) -> bool {
+        self.tasks.len() > idx + 1 && self.tasks[idx + 1].indent > self.tasks[idx].indent
+    }
+
+    fn last_child(&self, idx: usize, indent: usize) -> bool {
+        self.tasks.len() <= idx + 1 || self.tasks[idx + 1].indent <= indent
+    }
+
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
@@ -189,7 +197,10 @@ impl Tui {
                 .map(|(i, task)| {
                     let marker = if task.completed {
                         "✔".green()
-                    } else {
+                    } else if self.has_children(i) {
+                        "➤".dark_gray()
+                    }
+                    else {
                         "•".dark_gray()
                     };
 
@@ -213,8 +224,13 @@ impl Tui {
                         }
                     }
 
+                    let mut prefix = "".to_string();
+                    for level in 0..task.indent {
+                        prefix += if self.last_child(i, level) { "╰" } else { "│" };
+                        prefix += &"\u{00A0}".repeat(RENDER_INDENT - 1);
+                    }
                     Line::from(vec![
-                        Span::from("\u{00A0}".repeat(task.indent * RENDER_INDENT)),
+                        prefix.dark_gray(),
                         marker,
                         Span::from(" "),
                         Span::styled(title, style),
