@@ -127,27 +127,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .enumerate()
                 .map(|(i, task)| {
                     // Non-breaking space so strikethrough applies
-                    let marker = "•";
+                    let marker = if task.completed { "✔".green() } else { "•".dark_gray() };
                     let title = task.title.replace(" ", "\u{00A0}");
                     let mut style = Style::default();
                     if task.completed {
-                        style = style.fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT);
+                        style = style.fg(Color::DarkGray).crossed_out();
                     }
                     if i == selection {
                         if let InputMode::Text = input_mode {
-                            //style = style.bg(Color::Red);
                             let cursor_x = chunks[1].x + task.indent as u16 + text_input.visual_cursor() as u16 + 3;
                             let cursor_y = chunks[1].y + selection as u16 + 1;
                             frame.set_cursor_position((cursor_x, cursor_y));
                         }
                         else {
-                            style = style.bg(Color::DarkGray);
+                            style = style.bg(Color::Rgb(56, 56, 64));
                         }
                     }
-                    Line::styled(
-                        format!("{}{} {}", "\u{00A0}".repeat(task.indent), marker, title),
-                        style,
-                    )
+                    Line::from(vec![
+                        Span::from("\u{00A0}".repeat(task.indent)),
+                        marker,
+                        Span::from(" "),
+                        Span::styled(title, style),
+                    ])
                 })
                 .collect();
             let text = Text::from(task_lines);
