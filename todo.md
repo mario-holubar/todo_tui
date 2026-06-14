@@ -1,6 +1,6 @@
 - [x] Water plants
 - [ ] Buy groceries
-    - [ ] Veggies
-        - [ ] Carrots
-        - [ ] Broccoli
-    - [ ] Bread
+  - [ ] Veggies
+    - [ ] Carrots
+    - [ ] Broccoli
+  - [ ] Bread

@@ -44,6 +44,14 @@ impl Task {
         format!("{}- [{}] {}", whitespace, marker, self.title)
     }
 
+    fn indent(&mut self) {
+        self.indent += 2;
+    }
+
+    fn dedent(&mut self) {
+        self.indent = self.indent.saturating_sub(2);
+    }
+
     fn toggle_completed(&mut self) {
         self.completed = !self.completed
     }
@@ -141,6 +149,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Char('j') => selection = (selection + 1).min(tasks.len() - 1),
                     KeyCode::Char('k') => selection = selection.saturating_sub(1),
                     KeyCode::Char('x' | ' ') | KeyCode::Enter => tasks[selection].toggle_completed(),
+                    KeyCode::Char('<') => tasks[selection].dedent(),
+                    KeyCode::Char('>') => tasks[selection].indent(),
                     _ => {},
                 }
             }
