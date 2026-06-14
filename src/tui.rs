@@ -58,7 +58,7 @@ impl Tui {
     fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
             InputMode::Normal => {
-                // Normal mode hotkeys
+                // Normal mode
                 match key_event.code {
                     KeyCode::Char('q') => {
                         return true;
@@ -71,7 +71,7 @@ impl Tui {
                     }
                     _ => {}
                 }
-                // Normal mode hotkeys if selection active
+                // Normal mode, selection active
                 if let Some(idx) = self.selection {
                     match key_event.code {
                         KeyCode::Char('j') => {
@@ -133,7 +133,15 @@ impl Tui {
             },
             InputMode::Text => match key_event.code {
                 // Insert mode
-                KeyCode::Enter | KeyCode::Esc => self.input_mode = InputMode::Normal,
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal
+                }
+                KeyCode::Tab => {
+                    self.tasks[self.selection.unwrap()].indent();
+                }
+                KeyCode::BackTab => {
+                    self.tasks[self.selection.unwrap()].dedent();
+                }
                 _ => {
                     self.text_input.handle_event(&Event::Key(key_event));
                     self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
