@@ -1,0 +1,48 @@
+use crate::config::*;
+
+#[derive(Debug, Clone)]
+pub struct Task {
+    pub title: String,
+    pub indent: usize,
+    pub completed: bool,
+}
+
+impl Task {
+    pub fn from_str(string: &str) -> Option<Task> {
+        let trimmed = string.trim();
+        if !trimmed.starts_with("- [") {
+            return None;
+        }
+        let close_bracket = trimmed.find(']')?;
+        let checkbox_content = trimmed[3..close_bracket].trim();
+        let completed = matches!(checkbox_content, "x");
+        let title = trimmed[close_bracket + 1..].trim().to_string();
+        if title.is_empty() {
+            return None;
+        }
+        let indent = (string.len() - trimmed.len()) / FILE_INDENT;
+        Some(Task {
+            title,
+            completed,
+            indent,
+        })
+    }
+
+    pub fn to_str(&self) -> String {
+        let whitespace = " ".repeat(self.indent * FILE_INDENT);
+        let marker = if self.completed { "x" } else { " " };
+        format!("{}- [{}] {}", whitespace, marker, self.title)
+    }
+
+    pub fn indent(&mut self) {
+        self.indent += 1;
+    }
+
+    pub fn dedent(&mut self) {
+        self.indent = self.indent.saturating_sub(1);
+    }
+
+    pub fn toggle_completed(&mut self) {
+        self.completed = !self.completed
+    }
+}
