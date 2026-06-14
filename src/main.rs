@@ -9,6 +9,8 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
 
 #[derive(Debug, Clone)]
 struct Task {
@@ -57,6 +59,11 @@ impl Task {
     }
 }
 
+enum InputMode {
+    Normal,
+    Text,
+}
+
 fn restore_terminal() {
     let mut stdout = std::io::stdout();
     stdout
@@ -93,6 +100,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     let mut selection = 0;
+    let mut text_input = Input::new(String::new());
+    let mut input_mode = InputMode::Normal;
 
     loop {
         // Render
@@ -125,7 +134,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         style = style.fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT);
                     }
                     if i == selection {
-                        style = style.bg(Color::DarkGray);
+                        if let InputMode::Text = input_mode {
+                            //style = style.bg(Color::Red);
+                            let cursor_x = chunks[1].x + task.indent as u16 + text_input.visual_cursor() as u16 + 3;
+                            let cursor_y = chunks[1].y + selection as u16 + 1;
+                            frame.set_cursor_position((cursor_x, cursor_y));
+                        }
+                        else {
+                            style = style.bg(Color::DarkGray);
+                        }
                     }
                     Line::styled(
                         format!("{}{} {}", "\u{00A0}".repeat(task.indent), marker, title),
@@ -141,17 +158,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })?;
 
         // Handle events
+        let task = &mut tasks[selection];
         if event::poll(std::time::Duration::MAX)? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
-                    KeyCode::Char('j') => selection = (selection + 1).min(tasks.len() - 1),
-                    KeyCode::Char('k') => selection = selection.saturating_sub(1),
-                    KeyCode::Char('x' | ' ') | KeyCode::Enter => tasks[selection].toggle_completed(),
-                    KeyCode::Char('<') => tasks[selection].dedent(),
-                    KeyCode::Char('>') => tasks[selection].indent(),
-                    _ => {},
+            let event = event::read()?;
+            if let Event::Key(key) = event {
+                match input_mode {
+                    InputMode::Normal => match key.code {
+                        KeyCode::Char('q') => break,
+                        KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
+                        KeyCode::Char('j') => selection = (selection + 1).min(tasks.len() - 1),
+                        KeyCode::Char('k') => selection = selection.saturating_sub(1),
+                        KeyCode::Char('x' | ' ') | KeyCode::Enter => task.toggle_completed(),
+                        KeyCode::Char('<') => task.dedent(),
+                        KeyCode::Char('>') => task.indent(),
+                        KeyCode::Char('e' | 'c' | 'a') => {
+                            text_input = text_input.with_value(task.title.clone());
+                            input_mode = InputMode::Text
+                        },
+                        KeyCode::Char('i') => {
+                            text_input = text_input.with_value(task.title.clone()).with_cursor(0);
+                            input_mode = InputMode::Text
+                        },
+                        _ => {},
+                    },
+                    InputMode::Text => match key.code {
+                        KeyCode::Enter | KeyCode::Esc => input_mode = InputMode::Normal,
+                        _ => _ = {
+                            text_input.handle_event(&event);
+                            task.title = text_input.value().to_string();
+                        },
+                    }
                 }
             }
         }
