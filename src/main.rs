@@ -19,13 +19,13 @@ struct Task {
 
 impl Task {
     fn from_str(string: &str) -> Option<Task> {
-            let trimmed = string.trim_start();
+            let trimmed = string.trim();
             if !trimmed.starts_with("- [") {
                 return None;
             }
             let close_bracket = trimmed.find(']')?;
             let checkbox_content = trimmed[3..close_bracket].trim();
-            let completed = matches!(checkbox_content, "x" | "X");
+            let completed = matches!(checkbox_content, "x");
             let title = trimmed[close_bracket + 1..].trim().to_string();
             if title.is_empty() {
                 return None;
@@ -36,6 +36,12 @@ impl Task {
                 completed,
                 indent,
             })
+    }
+
+    fn to_str(&self) -> String {
+        let whitespace = " ".repeat(self.indent);
+        let marker = if self.completed { "x" } else { " " };
+        format!("{}- [{}] {}", whitespace, marker, self.title)
     }
 }
 
@@ -50,12 +56,16 @@ fn restore_terminal() {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read the todo file
     let content = fs::read_to_string("todo.md")?;
+    // Trim trailing newline
+    let content = content.trim_end();
     // Parse it into Tasks
     let tasks: Vec<Task> = content
         .lines()
         .filter_map(|line| Task::from_str(line))
         .collect();
-    // TODO Verify with a round trip test
+    // Verify with a round trip test
+    let reconstructed_lines: Vec<String> = tasks.iter().map(|task| task.to_str()).collect();
+    assert_eq!(content, reconstructed_lines.join("\n"));
 
     // Disable raw mode on panic
     std::panic::set_hook(Box::new(|info| {
