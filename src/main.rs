@@ -80,6 +80,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = ratatui::Terminal::new(backend)?;
 
+    let mut selection = 0;
+
     loop {
         // Render
         terminal.draw(|frame| {
@@ -101,17 +103,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Render parsed tasks in the main area
             let task_lines: Vec<Line> = tasks
                 .iter()
-                .map(|task| {
+                .enumerate()
+                .map(|(i, task)| {
                     // Non-breaking space so strikethrough applies
                     let marker = "•";
                     let title = task.title.replace(" ", "\u{00A0}");
-                    let style = if task.completed {
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::CROSSED_OUT)
-                    } else {
-                        Style::default()
-                    };
+                    let mut style = Style::default();
+                    if task.completed {
+                        style = style.fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT);
+                    }
+                    if i == selection {
+                        style = style.bg(Color::DarkGray);
+                    }
                     Line::styled(
                         format!("{}{} {}", "\u{00A0}".repeat(task.indent), marker, title),
                         style,
@@ -131,6 +134,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match key.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
+                    KeyCode::Char('j') => selection = (selection + 1).min(tasks.len() - 1),
+                    KeyCode::Char('k') => selection = selection.saturating_sub(1),
                     _ => {},
                 }
             }
