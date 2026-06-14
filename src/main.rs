@@ -81,17 +81,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = ratatui::Terminal::new(backend)?;
 
     loop {
-        // Handle events
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
-                    _ => {},
-                }
-            }
-        }
-
         // Render
         terminal.draw(|frame| {
             let area = frame.area();
@@ -135,6 +124,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .block(Block::default().borders(Borders::ALL).title(" todo.md "));
             frame.render_widget(paragraph, chunks[1]);
         })?;
+
+        // Handle events
+        if event::poll(std::time::Duration::MAX)? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
+                    _ => {},
+                }
+            }
+        }
     }
 
     // Restore terminal
