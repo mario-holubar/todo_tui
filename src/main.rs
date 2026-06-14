@@ -4,6 +4,7 @@ use std::fs;
 #[derive(Debug, Clone)]
 struct Task {
     title: String,
+    indent: usize,
     completed: bool,
 }
 
@@ -31,7 +32,9 @@ fn parse_tasks(content: &str) -> Vec<Task> {
                 return None;
             }
 
-            Some(Task { title, completed })
+            let indent = line.len() - trimmed.len();
+
+            Some(Task { title, completed, indent })
         })
         .collect()
 }
@@ -111,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Style::default()
                     };
                     Line::styled(
-                        format!("{} {}", marker, title),
+                        format!("{}{} {}", "\u{00A0}".repeat(task.indent), marker, title),
                         style,
                     )
                 })
