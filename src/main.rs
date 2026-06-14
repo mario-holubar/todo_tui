@@ -39,7 +39,9 @@ fn parse_tasks(content: &str) -> Vec<Task> {
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
+    terminal,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
 };
 use ratatui::{
     layout::Constraint,
@@ -57,6 +59,14 @@ fn should_quit(key: &event::KeyEvent) -> bool {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Disable raw mode on panic
+    std::panic::set_hook(Box::new(|info| {
+        let mut stdout = std::io::stdout();
+        stdout.execute(terminal::LeaveAlternateScreen).unwrap();
+        terminal::disable_raw_mode().unwrap();
+        eprintln!("{info}");
+    }));
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
