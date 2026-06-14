@@ -43,6 +43,10 @@ impl Task {
         let marker = if self.completed { "x" } else { " " };
         format!("{}- [{}] {}", whitespace, marker, self.title)
     }
+
+    fn toggle_completed(&mut self) {
+        self.completed = !self.completed
+    }
 }
 
 fn restore_terminal() {
@@ -59,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Trim trailing newline
     let content = content.trim_end();
     // Parse it into Tasks
-    let tasks: Vec<Task> = content
+    let mut tasks: Vec<Task> = content
         .lines()
         .filter_map(|line| Task::from_str(line))
         .collect();
@@ -136,6 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => break,
                     KeyCode::Char('j') => selection = (selection + 1).min(tasks.len() - 1),
                     KeyCode::Char('k') => selection = selection.saturating_sub(1),
+                    KeyCode::Char('x' | ' ') | KeyCode::Enter => tasks[selection].toggle_completed(),
                     _ => {},
                 }
             }
