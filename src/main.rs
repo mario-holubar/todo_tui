@@ -12,6 +12,9 @@ use ratatui::{
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
+const FILE_INDENT: usize = 4;
+const RENDER_INDENT: usize = 2;
+
 #[derive(Debug, Clone)]
 struct Task {
     title: String,
@@ -32,7 +35,7 @@ impl Task {
             if title.is_empty() {
                 return None;
             }
-            let indent = string.len() - trimmed.len();
+            let indent = (string.len() - trimmed.len()) / FILE_INDENT;
             Some(Task {
                 title,
                 completed,
@@ -41,17 +44,17 @@ impl Task {
     }
 
     fn to_str(&self) -> String {
-        let whitespace = " ".repeat(self.indent);
+        let whitespace = " ".repeat(self.indent * FILE_INDENT);
         let marker = if self.completed { "x" } else { " " };
         format!("{}- [{}] {}", whitespace, marker, self.title)
     }
 
     fn indent(&mut self) {
-        self.indent += 2;
+        self.indent += 1;
     }
 
     fn dedent(&mut self) {
-        self.indent = self.indent.saturating_sub(2);
+        self.indent = self.indent.saturating_sub(1);
     }
 
     fn toggle_completed(&mut self) {
@@ -135,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     if i == selection {
                         if let InputMode::Text = input_mode {
-                            let cursor_x = chunks[1].x + task.indent as u16 + text_input.visual_cursor() as u16 + 3;
+                            let cursor_x = chunks[1].x + (task.indent * RENDER_INDENT) as u16 + text_input.visual_cursor() as u16 + 3;
                             let cursor_y = chunks[1].y + selection as u16 + 1;
                             frame.set_cursor_position((cursor_x, cursor_y));
                         }
@@ -144,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Line::from(vec![
-                        Span::from("\u{00A0}".repeat(task.indent)),
+                        Span::from("\u{00A0}".repeat(task.indent * RENDER_INDENT)),
                         marker,
                         Span::from(" "),
                         Span::styled(title, style),
