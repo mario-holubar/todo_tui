@@ -22,7 +22,7 @@ enum InputMode {
 #[derive(Debug, Default)]
 pub struct Tui {
     tasks: Vec<Task>,
-    selection: usize,
+    selection: Option<usize>,
     text_input: Input,
     input_mode: InputMode,
 }
@@ -31,6 +31,9 @@ impl Tui {
     pub fn new() -> Tui {
         let mut tui = Tui::default();
         tui.load_todos();
+        if !tui.tasks.is_empty() {
+            tui.selection = Some(0);
+        }
         tui
     }
 
@@ -51,37 +54,45 @@ impl Tui {
         assert_eq!(content, reconstructed_lines.join("\n"));
     }
 
-    fn selected_task(&mut self) -> &mut Task {
-        &mut self.tasks[self.selection]
-    }
-
     fn update(&mut self, key_event: KeyEvent) {
         match self.input_mode {
-            InputMode::Normal => match key_event.code {
-                KeyCode::Char('j') => {
-                    self.selection = (self.selection + 1).min(self.tasks.len() - 1)
+            InputMode::Normal => {
+                if let Some(idx) = self.selection {
+                    match key_event.code {
+                        KeyCode::Char('j') => {
+                            self.selection = Some((idx + 1).min(self.tasks.len() - 1))
+                        }
+                        KeyCode::Char('k') => {
+                            self.selection = Some(idx.saturating_sub(1))
+                        }
+                        KeyCode::Char('x' | ' ') | KeyCode::Enter => {
+                            self.tasks[idx].toggle_completed()
+                        }
+                        KeyCode::Char('<') => {
+                            self.tasks[idx].dedent()
+                        }
+                        KeyCode::Char('>') => {
+                            self.tasks[idx].indent()
+                        }
+                        KeyCode::Char('e' | 'c' | 'a') => {
+                            self.text_input = take(&mut self.text_input).with_value(self.tasks[idx].title.clone());
+                            self.input_mode = InputMode::Text;
+                        }
+                        KeyCode::Char('i') => {
+                            self.text_input = take(&mut self.text_input)
+                                .with_value(self.tasks[idx].title.clone())
+                                .with_cursor(0);
+                            self.input_mode = InputMode::Text;
+                        }
+                        _ => {}
+                    }
                 }
-                KeyCode::Char('k') => self.selection = self.selection.saturating_sub(1),
-                KeyCode::Char('x' | ' ') | KeyCode::Enter => self.selected_task().toggle_completed(),
-                KeyCode::Char('<') => self.selected_task().dedent(),
-                KeyCode::Char('>') => self.selected_task().indent(),
-                KeyCode::Char('e' | 'c' | 'a') => {
-                    self.text_input = take(&mut self.text_input).with_value(self.selected_task().title.clone());
-                    self.input_mode = InputMode::Text
-                }
-                KeyCode::Char('i') => {
-                    self.text_input = take(&mut self.text_input)
-                        .with_value(self.selected_task().title.clone())
-                        .with_cursor(0);
-                    self.input_mode = InputMode::Text
-                }
-                _ => {}
             },
             InputMode::Text => match key_event.code {
                 KeyCode::Enter | KeyCode::Esc => self.input_mode = InputMode::Normal,
                 _ => {
                     self.text_input.handle_event(&Event::Key(key_event));
-                    self.selected_task().title = self.text_input.value().to_string();
+                    self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
                 }
             },
         }
@@ -113,29 +124,32 @@ impl Tui {
                 .iter()
                 .enumerate()
                 .map(|(i, task)| {
-                    // Non-breaking space so strikethrough applies
                     let marker = if task.completed {
                         "✔".green()
                     } else {
                         "•".dark_gray()
                     };
+
+                    // Non-breaking space so strikethrough applies
                     let title = task.title.replace(" ", "\u{00A0}");
+
                     let mut style = Style::default();
                     if task.completed {
                         style = style.fg(Color::DarkGray).crossed_out();
                     }
-                    if i == self.selection {
+                    if self.selection == Some(i) {
                         if let InputMode::Text = self.input_mode {
                             let cursor_x = chunks[1].x
                                 + (task.indent * RENDER_INDENT) as u16
                                 + self.text_input.visual_cursor() as u16
                                 + 3;
-                            let cursor_y = chunks[1].y + self.selection as u16 + 1;
+                            let cursor_y = chunks[1].y + i as u16 + 1;
                             frame.set_cursor_position((cursor_x, cursor_y));
                         } else {
                             style = style.bg(Color::Rgb(56, 56, 64));
                         }
                     }
+
                     Line::from(vec![
                         Span::from("\u{00A0}".repeat(task.indent * RENDER_INDENT)),
                         marker,
@@ -144,6 +158,7 @@ impl Tui {
                     ])
                 })
                 .collect();
+
             let text = Text::from(task_lines);
             let paragraph = Paragraph::new(text)
                 .wrap(Wrap { trim: true })
