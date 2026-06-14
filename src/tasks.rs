@@ -1,6 +1,6 @@
 use crate::config::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Task {
     pub title: String,
     pub indent: usize,

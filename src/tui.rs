@@ -54,9 +54,24 @@ impl Tui {
         assert_eq!(content, reconstructed_lines.join("\n"));
     }
 
-    fn update(&mut self, key_event: KeyEvent) {
+    // Process input. Returns true if the loop should exit
+    fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
             InputMode::Normal => {
+                // Normal mode hotkeys
+                match key_event.code {
+                    KeyCode::Char('q') => {
+                        return true;
+                    }
+                    KeyCode::Char('n') => {
+                        self.tasks.insert(0, Task::default());
+                        self.selection = Some(0);
+                        self.text_input = Input::new("".to_string());
+                        self.input_mode = InputMode::Text;
+                    }
+                    _ => {}
+                }
+                // Normal mode hotkeys if selection active
                 if let Some(idx) = self.selection {
                     match key_event.code {
                         KeyCode::Char('j') => {
@@ -84,11 +99,40 @@ impl Tui {
                                 .with_cursor(0);
                             self.input_mode = InputMode::Text;
                         }
+                        KeyCode::Char('d') => {
+                            self.tasks.remove(idx);
+                            if self.tasks.is_empty() {
+                                self.selection = None;
+                            }
+                            else {
+                                self.selection = Some(idx.min(self.tasks.len() - 1));
+                            }
+                        }
+                        KeyCode::Char('o') => {
+                            let new_task = Task {
+                                indent: self.tasks[idx].indent,
+                                ..Default::default()
+                            };
+                            self.tasks.insert(idx + 1, new_task);
+                            self.selection = Some(idx + 1);
+                            self.text_input = Input::new("".to_string());
+                            self.input_mode = InputMode::Text;
+                        }
+                        KeyCode::Char('O') => {
+                            let new_task = Task {
+                                indent: self.tasks[idx].indent,
+                                ..Default::default()
+                            };
+                            self.tasks.insert(idx, new_task);
+                            self.text_input = Input::new("".to_string());
+                            self.input_mode = InputMode::Text;
+                        }
                         _ => {}
                     }
                 }
             },
             InputMode::Text => match key_event.code {
+                // Insert mode
                 KeyCode::Enter | KeyCode::Esc => self.input_mode = InputMode::Normal,
                 _ => {
                     self.text_input.handle_event(&Event::Key(key_event));
@@ -96,6 +140,7 @@ impl Tui {
                 }
             },
         }
+        false
     }
 
     fn draw(
@@ -176,11 +221,14 @@ impl Tui {
                     let event = event::read()?;
                     if let Event::Key(key) = event {
                         match key.code {
-                            KeyCode::Char('q') => break,
                             KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => {
-                                break
+                                break;
                             }
-                            _ => self.update(key),
+                            _ => {
+                                if self.update(key) {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
