@@ -133,12 +133,21 @@ impl Tui {
         None
     }
 
+    fn end_of_children(&self, idx: usize) -> usize {
+        if !self.has_children(idx) { return idx; };
+        self.end_of_children(*self.get_children(idx).last().unwrap())
+    }
+
     fn has_children(&self, idx: usize) -> bool {
         self.tasks.len() > idx + 1 && self.tasks[idx + 1].indent > self.tasks[idx].indent
     }
 
+    fn is_first_child(&self, idx: usize) -> bool {
+        idx == 0 || self.tasks[idx - 1].indent < self.tasks[idx].indent
+    }
+
     fn is_last_child(&self, idx: usize, indent: usize) -> bool {
-        self.tasks.len() <= idx + 1 || self.tasks[idx + 1].indent <= indent
+        idx >= self.tasks.len() - 1 || self.tasks[idx + 1].indent <= indent
     }
 
     fn is_first_actionable(&self, idx: usize) -> bool {
@@ -150,22 +159,55 @@ impl Tui {
     }
 
     fn update_parent_completion(&mut self, idx: usize) {
-        let Some(parent) = self.get_parent(idx) else { return; };
-        self.tasks[parent].completed = self.get_children(parent).iter().all(|&i| self.tasks[i].completed);
-        self.update_parent_completion(parent);
+        if !self.has_children(idx) { return; };
+        let completed = self.get_children(idx).iter().all(|&i| self.tasks[i].completed);
+        if completed != self.tasks[idx].completed {
+            self.tasks[idx].completed = completed;
+            if let Some(parent) = self.get_parent(idx) { self.update_parent_completion(parent); }
+        }
     }
 
-    fn update_children_completion(&mut self, idx: usize) {
+    fn set_children_completion(&mut self, idx: usize) {
         self.get_children(idx).iter().for_each(|&i| {
             self.tasks[i].completed = self.tasks[idx].completed;
-            self.update_children_completion(i);
+            self.set_children_completion(i);
         });
     }
 
     fn toggle_completed(&mut self, idx: usize) {
         self.tasks[idx].toggle_completed();
-        self.update_parent_completion(idx);
-        self.update_children_completion(idx);
+        if let Some(parent) = self.get_parent(idx) { self.update_parent_completion(parent); }
+        self.set_children_completion(idx);
+    }
+
+    fn demote(&mut self, idx: usize) {
+        self.get_children(idx).iter().for_each(|&i| self.demote(i));
+        self.tasks[idx].indent();
+
+        if let Some(p) = self.get_parent(idx) { self.update_parent_completion(p); }
+    }
+
+    // Returns new index of task
+    fn promote(&mut self, mut idx: usize) -> usize {
+        if self.tasks[idx].indent == 0 { return idx; };
+
+        let old_parent = self.get_parent(idx);
+        let mut end_of_children = self.end_of_children(idx);
+
+        // Move task and children to after last sibling
+        if let Some(p) = old_parent {
+            let last_sibling = *self.get_children(p).last().unwrap();
+            let end_of_siblings = self.end_of_children(last_sibling);
+            self.tasks[idx..=end_of_siblings].rotate_left(end_of_children + 1 - idx);
+            idx += end_of_siblings - end_of_children;
+            end_of_children = end_of_siblings;
+        }
+
+        for i in idx..=end_of_children { self.tasks[i].dedent() };
+
+        if let Some(p) = old_parent { self.update_parent_completion(p); }
+
+        idx
     }
 
     // Process input. Returns true if the loop should exit
@@ -187,6 +229,8 @@ impl Tui {
                 }
                 // Normal mode, selection active
                 if let Some(idx) = self.selection {
+                    // TODO Match modifiers first
+                    // TODO Ctrl-j/k to move task and children
                     match key_event.code {
                         KeyCode::Char('x' | ' ') | KeyCode::Enter => {
                             self.toggle_completed(idx);
@@ -197,11 +241,31 @@ impl Tui {
                         KeyCode::Char('k') => {
                             self.selection = Some(idx.saturating_sub(1))
                         }
-                        KeyCode::Char('<') => {
-                            self.tasks[idx].dedent()
+                        KeyCode::Char('h') if key_event.modifiers == KeyModifiers::NONE => {
+                            if let Some(p) = self.get_parent(idx) {
+                                self.selection = Some(p);
+                            }
                         }
-                        KeyCode::Char('>') => {
-                            self.tasks[idx].indent()
+                        KeyCode::Char('l') if key_event.modifiers == KeyModifiers::NONE => {
+                            if let Some(&c) = self.get_children(idx).first() {
+                                self.selection = Some(c);
+                            }
+                        }
+                        KeyCode::Char('<') | KeyCode::BackTab => {
+                            self.selection = Some(self.promote(idx));
+                        }
+                        KeyCode::Char('h') if key_event.modifiers == KeyModifiers::CONTROL => {
+                            self.selection = Some(self.promote(idx));
+                        }
+                        KeyCode::Char('>') | KeyCode::Tab => {
+                            if !self.is_first_child(idx) {
+                                self.demote(idx);
+                            }
+                        }
+                        KeyCode::Char('l') if key_event.modifiers == KeyModifiers::CONTROL => {
+                            if !self.is_first_child(idx) {
+                                self.demote(idx);
+                            }
                         }
                         KeyCode::Char('e' | 'c' | 'a') => {
                             self.text_input = take(&mut self.text_input).with_value(self.tasks[idx].title.clone());
@@ -353,7 +417,7 @@ impl Tui {
             let text = Text::from(task_lines);
             let paragraph = Paragraph::new(text)
                 .wrap(Wrap { trim: true })
-                .block(Block::default().borders(Borders::ALL).title(" todo.md "));
+                .block(Block::default().borders(Borders::ALL).title(format!(" {} ", TODO_FILE)));
             frame.render_widget(paragraph, chunks[1]);
         })?;
         Ok(())
