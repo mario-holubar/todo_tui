@@ -1,5 +1,7 @@
 use std::{error::Error, fs, io::Stdout, mem::take};
 
+// TODO Use ratatui::crossterm
+// TODO Or get rid of ratatui and just use crossterm
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::Constraint,
@@ -277,9 +279,11 @@ impl Tui {
     }
 
     // TODO Undo/redo
+    // TODO Keybind config
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         let state_changed = match self.input_mode {
+            // TODO Match modifiers first
             InputMode::Normal => {
                 // Normal mode
                 let state_changed = match key_event.code {
@@ -396,6 +400,9 @@ impl Tui {
                             }
                         },
                         KeyModifiers::CONTROL => match key_event.code {
+                            KeyCode::Char('c' | 'd') => {
+                                return true;
+                            }
                             KeyCode::Char('j') => {
                                 self.selection = Some(self.transpose_down(idx));
                                 true
@@ -429,9 +436,30 @@ impl Tui {
                     false
                 }
             }
+            // TODO Match modifiers first
             InputMode::Text => match key_event.code {
                 // Insert mode
+                KeyCode::Char('d') if key_event.modifiers == KeyModifiers::CONTROL => {
+                    return true;
+                }
+                KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
+                    // TODO finish_editing function
+                    let idx = self.selection.as_mut().unwrap();
+                    if self.tasks[*idx].title.is_empty() {
+                        self.tasks.remove(*idx);
+                        if self.tasks.is_empty() {
+                            self.selection = None;
+                        }
+                        else {
+                            *idx = idx.saturating_sub(1);
+                        }
+                    }
+                    self.input_mode = InputMode::Normal;
+                    true
+                }
+                // TODO Add another task on Enter
                 KeyCode::Enter | KeyCode::Esc => {
+                    // TODO finish_editing function
                     let idx = self.selection.as_mut().unwrap();
                     if self.tasks[*idx].title.is_empty() {
                         self.tasks.remove(*idx);
@@ -549,15 +577,8 @@ impl Tui {
                 if event::poll(std::time::Duration::MAX)? {
                     let event = event::read()?;
                     if let Event::Key(key) = event {
-                        match key.code {
-                            KeyCode::Char('c' | 'd') if key.modifiers == KeyModifiers::CONTROL => {
-                                break;
-                            }
-                            _ => {
-                                if self.update(key) {
-                                    break;
-                                }
-                            }
+                        if self.update(key) {
+                            break;
                         }
                     }
                 }
