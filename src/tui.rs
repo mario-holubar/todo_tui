@@ -55,11 +55,12 @@ impl Tui {
     }
 
     fn get_parent(&self, idx: usize) -> Option<usize> {
-        if idx == 0 || self.tasks[idx].indent == 0 { return None; }
-        else {
+        if idx == 0 || self.tasks[idx].indent == 0 {
+            return None;
+        } else {
             for i in (0..idx).rev() {
                 if self.tasks[i].indent == self.tasks[idx].indent - 1 {
-                    return Some(i)
+                    return Some(i);
                 }
             }
         }
@@ -73,8 +74,7 @@ impl Tui {
             let t = &self.tasks[i];
             if t.indent == task.indent + 1 {
                 children.push(i);
-            }
-            else if t.indent <= task.indent {
+            } else if t.indent <= task.indent {
                 break;
             }
         }
@@ -88,8 +88,7 @@ impl Tui {
             let t = &self.tasks[i];
             if t.indent == task.indent {
                 siblings.push(i);
-            }
-            else if t.indent <= task.indent {
+            } else if t.indent <= task.indent {
                 break;
             }
         }
@@ -97,8 +96,7 @@ impl Tui {
             let t = &self.tasks[i];
             if t.indent == task.indent {
                 siblings.push(i);
-            }
-            else if t.indent <= task.indent {
+            } else if t.indent <= task.indent {
                 break;
             }
         }
@@ -111,8 +109,7 @@ impl Tui {
             let t = &self.tasks[i];
             if t.indent == task.indent {
                 return Some(i);
-            }
-            else if t.indent <= task.indent {
+            } else if t.indent <= task.indent {
                 break;
             }
         }
@@ -125,8 +122,7 @@ impl Tui {
             let t = &self.tasks[i];
             if t.indent == task.indent {
                 return Some(i);
-            }
-            else if t.indent <= task.indent {
+            } else if t.indent <= task.indent {
                 break;
             }
         }
@@ -134,7 +130,9 @@ impl Tui {
     }
 
     fn end_of_children(&self, idx: usize) -> usize {
-        if !self.has_children(idx) { return idx; };
+        if !self.has_children(idx) {
+            return idx;
+        };
         self.end_of_children(*self.get_children(idx).last().unwrap())
     }
 
@@ -146,24 +144,33 @@ impl Tui {
         idx == 0 || self.tasks[idx - 1].indent < self.tasks[idx].indent
     }
 
-    fn is_last_child(&self, idx: usize, indent: usize) -> bool {
-        idx >= self.tasks.len() - 1 || self.tasks[idx + 1].indent <= indent
-    }
-
     fn is_first_actionable(&self, idx: usize) -> bool {
         if self.tasks[idx].indent == 0 {
             return true;
         }
-        let Some(parent) = self.get_parent(idx) else { return true; };
-        self.is_first_actionable(parent) && !self.get_siblings(idx).iter().any(|&i| i < idx && !self.tasks[i].completed)
+        let Some(parent) = self.get_parent(idx) else {
+            return true;
+        };
+        self.is_first_actionable(parent)
+            && !self
+                .get_siblings(idx)
+                .iter()
+                .any(|&i| i < idx && !self.tasks[i].completed)
     }
 
     fn update_parent_completion(&mut self, idx: usize) {
-        if !self.has_children(idx) { return; };
-        let completed = self.get_children(idx).iter().all(|&i| self.tasks[i].completed);
+        if !self.has_children(idx) {
+            return;
+        };
+        let completed = self
+            .get_children(idx)
+            .iter()
+            .all(|&i| self.tasks[i].completed);
         if completed != self.tasks[idx].completed {
             self.tasks[idx].completed = completed;
-            if let Some(parent) = self.get_parent(idx) { self.update_parent_completion(parent); }
+            if let Some(parent) = self.get_parent(idx) {
+                self.update_parent_completion(parent);
+            }
         }
     }
 
@@ -176,7 +183,9 @@ impl Tui {
 
     fn toggle_completed(&mut self, idx: usize) {
         self.tasks[idx].toggle_completed();
-        if let Some(parent) = self.get_parent(idx) { self.update_parent_completion(parent); }
+        if let Some(parent) = self.get_parent(idx) {
+            self.update_parent_completion(parent);
+        }
         self.set_children_completion(idx);
     }
 
@@ -216,7 +225,9 @@ impl Tui {
 
     // Returns new index of task
     fn promote(&mut self, mut idx: usize) -> usize {
-        if self.tasks[idx].indent == 0 { return idx; };
+        if self.tasks[idx].indent == 0 {
+            return idx;
+        };
 
         let parent = self.get_parent(idx);
         let mut end_of_task = self.end_of_children(idx);
@@ -231,9 +242,13 @@ impl Tui {
             end_of_task = end_of_parent;
         }
 
-        for i in idx..=end_of_task { self.tasks[i].dedent() };
+        for i in idx..=end_of_task {
+            self.tasks[i].dedent()
+        }
 
-        if let Some(p) = parent { self.update_parent_completion(p); }
+        if let Some(p) = parent {
+            self.update_parent_completion(p);
+        }
 
         idx
     }
@@ -242,7 +257,9 @@ impl Tui {
         self.get_children(idx).iter().for_each(|&i| self.demote(i));
         self.tasks[idx].indent();
 
-        if let Some(p) = self.get_parent(idx) { self.update_parent_completion(p); }
+        if let Some(p) = self.get_parent(idx) {
+            self.update_parent_completion(p);
+        }
     }
 
     // Process input. Returns true if the loop should exit
@@ -265,99 +282,97 @@ impl Tui {
                 // Normal mode, selection active
                 if let Some(idx) = self.selection {
                     match key_event.modifiers {
-                        KeyModifiers::NONE => {
-                            match key_event.code {
-                                KeyCode::Char('x' | ' ') | KeyCode::Enter => {
-                                    self.toggle_completed(idx);
-                                }
-                                KeyCode::Char('j') => {
-                                    self.selection = Some((idx + 1).min(self.tasks.len() - 1))
-                                }
-                                KeyCode::Char('k') => {
-                                    self.selection = Some(idx.saturating_sub(1))
-                                }
-                                KeyCode::Char('h') => {
-                                    if let Some(p) = self.get_parent(idx) {
-                                        self.selection = Some(p);
-                                    }
-                                }
-                                KeyCode::Char('l') => {
-                                    if let Some(&c) = self.get_children(idx).first() {
-                                        self.selection = Some(c);
-                                    }
-                                }
-                                KeyCode::Char('<') | KeyCode::BackTab => {
-                                    self.selection = Some(self.promote(idx));
-                                }
-                                KeyCode::Char('>') | KeyCode::Tab => {
-                                    if !self.is_first_child(idx) {
-                                        self.demote(idx);
-                                    }
-                                }
-                                KeyCode::Char('e' | 'c' | 'a') => {
-                                    self.text_input = take(&mut self.text_input).with_value(self.tasks[idx].title.clone());
-                                    self.input_mode = InputMode::Text;
-                                }
-                                KeyCode::Char('i') => {
-                                    self.text_input = take(&mut self.text_input)
-                                        .with_value(self.tasks[idx].title.clone())
-                                        .with_cursor(0);
-                                    self.input_mode = InputMode::Text;
-                                }
-                                KeyCode::Char('d') => {
-                                    self.tasks.remove(idx);
-                                    if self.tasks.is_empty() {
-                                        self.selection = None;
-                                    }
-                                    else {
-                                        self.selection = Some(idx.min(self.tasks.len() - 1));
-                                    }
-                                }
-                                KeyCode::Char('o') => {
-                                    let new_task = Task {
-                                        indent: self.tasks[idx].indent,
-                                        ..Default::default()
-                                    };
-                                    self.tasks.insert(idx + 1, new_task);
-                                    self.selection = Some(idx + 1);
-                                    self.text_input = Input::new("".to_string());
-                                    self.input_mode = InputMode::Text;
-                                }
-                                KeyCode::Char('O') => {
-                                    let new_task = Task {
-                                        indent: self.tasks[idx].indent,
-                                        ..Default::default()
-                                    };
-                                    self.tasks.insert(idx, new_task);
-                                    self.text_input = Input::new("".to_string());
-                                    self.input_mode = InputMode::Text;
-                                }
-                                _ => {}
+                        KeyModifiers::NONE => match key_event.code {
+                            KeyCode::Char('x' | ' ') | KeyCode::Enter => {
+                                self.toggle_completed(idx);
                             }
-                        }
-                        KeyModifiers::CONTROL => {
-                            match key_event.code {
-                                KeyCode::Char('j') => {
-                                    self.selection = Some(self.transpose_down(idx));
-                                }
-                                KeyCode::Char('k') => {
-                                    self.selection = Some(self.transpose_up(idx));
-                                }
-                                KeyCode::Char('h') => {
-                                    self.selection = Some(self.promote(idx));
-                                }
-                                KeyCode::Char('l') => {
-                                    if !self.is_first_child(idx) {
-                                        self.demote(idx);
-                                    }
-                                }
-                                _ => {}
+                            KeyCode::Char('j') => {
+                                self.selection = Some((idx + 1).min(self.tasks.len() - 1))
                             }
-                        }
+                            KeyCode::Char('k') => self.selection = Some(idx.saturating_sub(1)),
+                            KeyCode::Char('h') => {
+                                if let Some(p) = self.get_parent(idx) {
+                                    self.selection = Some(p);
+                                }
+                            }
+                            KeyCode::Char('l') => {
+                                if let Some(&c) = self.get_children(idx).first() {
+                                    self.selection = Some(c);
+                                }
+                            }
+                            KeyCode::Char('<') | KeyCode::BackTab => {
+                                self.selection = Some(self.promote(idx));
+                            }
+                            KeyCode::Char('>') | KeyCode::Tab =>
+                            {
+                                #[allow(clippy::collapsible_match)]
+                                if !self.is_first_child(idx) {
+                                    self.demote(idx);
+                                }
+                            }
+                            KeyCode::Char('e' | 'c' | 'a') => {
+                                self.text_input = take(&mut self.text_input)
+                                    .with_value(self.tasks[idx].title.clone());
+                                self.input_mode = InputMode::Text;
+                            }
+                            KeyCode::Char('i') => {
+                                self.text_input = take(&mut self.text_input)
+                                    .with_value(self.tasks[idx].title.clone())
+                                    .with_cursor(0);
+                                self.input_mode = InputMode::Text;
+                            }
+                            KeyCode::Char('d') => {
+                                self.tasks.remove(idx);
+                                if self.tasks.is_empty() {
+                                    self.selection = None;
+                                } else {
+                                    self.selection = Some(idx.min(self.tasks.len() - 1));
+                                }
+                            }
+                            KeyCode::Char('o') => {
+                                let new_task = Task {
+                                    indent: self.tasks[idx].indent,
+                                    ..Default::default()
+                                };
+                                self.tasks.insert(idx + 1, new_task);
+                                self.selection = Some(idx + 1);
+                                self.text_input = Input::new("".to_string());
+                                self.input_mode = InputMode::Text;
+                            }
+                            KeyCode::Char('O') => {
+                                let new_task = Task {
+                                    indent: self.tasks[idx].indent,
+                                    ..Default::default()
+                                };
+                                self.tasks.insert(idx, new_task);
+                                self.text_input = Input::new("".to_string());
+                                self.input_mode = InputMode::Text;
+                            }
+                            _ => {}
+                        },
+                        KeyModifiers::CONTROL => match key_event.code {
+                            KeyCode::Char('j') => {
+                                self.selection = Some(self.transpose_down(idx));
+                            }
+                            KeyCode::Char('k') => {
+                                self.selection = Some(self.transpose_up(idx));
+                            }
+                            KeyCode::Char('h') => {
+                                self.selection = Some(self.promote(idx));
+                            }
+                            KeyCode::Char('l') =>
+                            {
+                                #[allow(clippy::collapsible_match)]
+                                if !self.is_first_child(idx) {
+                                    self.demote(idx);
+                                }
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     }
                 }
-            },
+            }
             InputMode::Text => match key_event.code {
                 // Insert mode
                 KeyCode::Enter | KeyCode::Esc => {
@@ -420,17 +435,14 @@ impl Tui {
                     if task.completed {
                         marker = "◉".fg(Color::DarkGray).dim();
                         title = title.fg(Color::DarkGray).dim();
-                    }
-                    else if self.has_children(i) {
+                    } else if self.has_children(i) {
                         //marker = "▷".dim();
                         marker = marker.reset();
                         title = title.reset();
-                    }
-                    else if self.is_first_actionable(i) {
+                    } else if self.is_first_actionable(i) {
                         marker = marker.green();
                         title = title.green().bold();
-                    }
-                    else {
+                    } else {
                         marker = marker.dim();
                         title = title.dim();
                     }
@@ -447,26 +459,17 @@ impl Tui {
                         }
                     }
 
-                    // Tree structure markers
-                    //let mut prefix = "".to_string();
-                    //for level in 0..task.indent {
-                        //prefix += if self.is_last_child(i, level) { "╰" } else { "│" };
-                        //prefix += &"\u{00A0}".repeat(RENDER_INDENT - 1);
-                    //}
                     let prefix = "\u{00A0}".repeat(task.indent * RENDER_INDENT);
-                    Line::from(vec![
-                        prefix.dark_gray(),
-                        marker,
-                        Span::from(" "),
-                        title,
-                    ])
+                    Line::from(vec![prefix.dark_gray(), marker, Span::from(" "), title])
                 })
                 .collect();
 
             let text = Text::from(task_lines);
-            let paragraph = Paragraph::new(text)
-                .wrap(Wrap { trim: true })
-                .block(Block::default().borders(Borders::ALL).title(format!(" {} ", TODO_FILE)));
+            let paragraph = Paragraph::new(text).wrap(Wrap { trim: true }).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" {} ", TODO_FILE)),
+            );
             frame.render_widget(paragraph, chunks[1]);
         })?;
         Ok(())
