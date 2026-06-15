@@ -324,11 +324,13 @@ impl Tui {
                         }
                     }
 
-                    let mut prefix = "".to_string();
-                    for level in 0..task.indent {
-                        prefix += if self.is_last_child(i, level) { "╰" } else { "│" };
-                        prefix += &"\u{00A0}".repeat(RENDER_INDENT - 1);
-                    }
+                    // Tree structure markers
+                    //let mut prefix = "".to_string();
+                    //for level in 0..task.indent {
+                        //prefix += if self.is_last_child(i, level) { "╰" } else { "│" };
+                        //prefix += &"\u{00A0}".repeat(RENDER_INDENT - 1);
+                    //}
+                    let prefix = "\u{00A0}".repeat(task.indent * RENDER_INDENT);
                     Line::from(vec![
                         prefix.dark_gray(),
                         marker,
