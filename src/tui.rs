@@ -1,7 +1,5 @@
 use std::{error::Error, fs, io::Stdout, mem::take};
 
-// TODO Use ratatui::crossterm
-// TODO Or get rid of ratatui and just use crossterm
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     prelude::*,
@@ -23,7 +21,7 @@ enum InputMode {
 #[derive(Debug, Default)]
 pub struct Tui {
     config: Config,
-    tasks: Vec<Task>, // TODO Tasks struct
+    tasks: Vec<Task>,
     selection: Option<usize>,
     text_input: Input,
     input_mode: InputMode,
@@ -42,7 +40,7 @@ impl Tui {
         // Parse it into Tasks
         let tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, config.file_indent)).collect();
         // Verify with a round trip test
-        assert_eq!(content, Self::serialize_tasks(&tasks, config.file_indent));
+        assert_eq!(content, serialize_tasks(&tasks, config.file_indent));
 
         let selection = {
             if tasks.is_empty() { None }
@@ -57,18 +55,9 @@ impl Tui {
         }
     }
 
-    // TODO Should this be here?
-    fn serialize_tasks(tasks: &[Task], indent_width: usize) -> String {
-        tasks.iter().fold(String::new(), |mut acc, task| {
-            let line = task.to_str(indent_width) + "\n";
-            acc.push_str(&line);
-            acc
-        })
-    }
-
     fn save_todos(&self) {
         // Serialize todos
-        let content = Self::serialize_tasks(&self.tasks, self.config.file_indent);
+        let content = serialize_tasks(&self.tasks, self.config.file_indent);
         // Verify with a round trip test
         let reconstructed_tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, self.config.file_indent)).collect();
         assert_eq!(self.tasks, reconstructed_tasks);
@@ -319,12 +308,9 @@ impl Tui {
         }
     }
 
-    // TODO Undo/redo
-    // TODO Keybind config
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         let state_changed = match self.input_mode {
-            // TODO Match modifiers first
             InputMode::Normal => {
                 // Normal mode
                 let state_changed = match key_event.code {
@@ -350,7 +336,6 @@ impl Tui {
                                 self.toggle_completed(idx);
                                 true
                             }
-                            // TODO Tree navigation?
                             KeyCode::Char('j') => {
                                 self.selection = Some((idx + 1).min(self.tasks.len() - 1));
                                 false
@@ -395,7 +380,6 @@ impl Tui {
                                 false
                             }
                             KeyCode::Char('d') => {
-                                // TODO Unindent or delete children
                                 self.tasks.remove(idx);
                                 if self.tasks.is_empty() {
                                     self.selection = None;
@@ -466,7 +450,6 @@ impl Tui {
                     false
                 }
             }
-            // TODO Match modifiers first
             InputMode::Text => match key_event.code {
                 // Insert mode
                 KeyCode::Char('d') if key_event.modifiers == KeyModifiers::CONTROL => {

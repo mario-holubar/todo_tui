@@ -1,6 +1,38 @@
-- [x] Water plants
-- [ ] Buy groceries
-    - [ ] Veggies
-        - [ ] Carrots
-        - [ ] Broccoli
-    - [ ] Bread
+- [ ] task with children should be grayed out if not first actionable
+- [ ] fix trailing whitespace panic
+- [ ] input refactor
+    - [ ] keymap in config
+    - [ ] data-driven setup instead of giant match statement
+    - [ ] match modifiers before keycodes
+    - [ ] allow o/O without selection
+- [ ] take task functionality out of tui.rs
+    - [ ] decide on flat or nested structure
+        - [ ] tree or line based navigation?
+    - [ ] task list struct
+    - [ ] or revisit nested Task struct
+- [ ] small ux things
+    - [ ] alt for moving tasks
+    - [ ] p / P to paste deleted task
+    - [ ] shift-i to insert
+    - [ ] move selection down after completing task
+    - [ ] unindent or delete children on task delete
+    - [ ] arrow keys
+    - [ ] manual save
+        - [ ] keybind
+        - [ ] config option
+        - [ ] ui indicator
+        - [ ] quit confirmation
+- [ ] headers as tabs
+- [ ] get rid of ratatui
+    - [ ] or get rid of crossterm dependency and use ratatui::crossterm instead
+- [ ] undo / redo
+    - [ ] diff based or just serialize entire file on each change?
+- [ ] load config file at runtime
+    - [ ] partial config support
+- [ ] release
+    - [ ] more config options
+        - [ ] fallback to global todo.md if local doesn't exist
+        - [ ] check code for possible settings
+    - [ ] proper error handling
+    - [ ] nix install
+    - [ ] video for readme

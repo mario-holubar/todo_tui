@@ -11,7 +11,6 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Config {
-        // TODO Load config file at runtime
         toml::from_str(DEFAULT_CONFIG).unwrap()
     }
 }

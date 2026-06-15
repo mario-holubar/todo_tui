@@ -1,4 +1,3 @@
-// TODO Revisit nested structure
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Task {
     pub title: String,
@@ -44,4 +43,12 @@ impl Task {
     pub fn toggle_completed(&mut self) {
         self.completed = !self.completed
     }
+}
+
+pub fn serialize_tasks(tasks: &[Task], indent_width: usize) -> String {
+    tasks.iter().fold(String::new(), |mut acc, task| {
+        let line = task.to_str(indent_width) + "\n";
+        acc.push_str(&line);
+        acc
+    })
 }
