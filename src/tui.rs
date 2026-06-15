@@ -364,12 +364,12 @@ impl Tui {
                                 }
                                 false
                             }
+                            // NOTE Pressing </> as Shift-,/. does not trigger shift modifier
                             KeyCode::Char('<') | KeyCode::BackTab => {
                                 self.selection = Some(self.promote(idx));
                                 true
                             }
-                            KeyCode::Char('>') | KeyCode::Tab =>
-                            {
+                            KeyCode::Char('>') | KeyCode::Tab => {
                                 #[allow(clippy::collapsible_match)]
                                 if !self.is_first_child(idx) {
                                     self.demote(idx);
@@ -401,12 +401,6 @@ impl Tui {
                                 self.begin_editing(idx + 1);
                                 false
                             }
-                            // TODO Move to shift match
-                            KeyCode::Char('O') => {
-                                self.selection = self.add_task(idx, self.tasks[idx].indent);
-                                self.begin_editing(idx);
-                                false
-                            }
                             KeyCode::Char('s') => {
                                 self.selection = self.add_task(idx + 1, self.tasks[idx].indent + 1);
                                 self.begin_editing(idx + 1);
@@ -416,6 +410,17 @@ impl Tui {
                                 false
                             }
                         },
+                        KeyModifiers::SHIFT => match key_event.code {
+                            // NOTE Chars must be uppercase
+                            KeyCode::Char('O') => {
+                                self.selection = self.add_task(idx, self.tasks[idx].indent);
+                                self.begin_editing(idx);
+                                false
+                            }
+                            _ => {
+                                false
+                            }
+                        }
                         KeyModifiers::CONTROL => match key_event.code {
                             KeyCode::Char('c' | 'd') => {
                                 return true;
