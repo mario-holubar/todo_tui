@@ -11,7 +11,7 @@ use ratatui::{
 use tui_input::backend::crossterm::EventHandler;
 use tui_input::Input;
 
-use crate::config::*;
+use crate::config::Config;
 use crate::tasks::*;
 
 #[derive(Debug, Default, PartialEq)]
@@ -23,7 +23,8 @@ enum InputMode {
 
 #[derive(Debug, Default)]
 pub struct Tui {
-    tasks: Vec<Task>,
+    config: Config,
+    tasks: Vec<Task>, // TODO Tasks struct
     selection: Option<usize>,
     text_input: Input,
     input_mode: InputMode,
@@ -31,43 +32,49 @@ pub struct Tui {
 
 impl Tui {
     pub fn new() -> Tui {
-        let mut tui = Tui::default();
-        tui.load_todos();
-        if !tui.tasks.is_empty() {
-            tui.selection = Some(0);
-        }
-        tui
-    }
+        let config = Config::load();
 
-    fn serialize(&self) -> String {
-        self.tasks.iter().fold(String::new(), |mut acc, task| {
-            let line = task.to_str() + "\n";
-            acc.push_str(&line);
-            acc
-        })
-    }
-
-    fn load_todos(&mut self) {
         // Read the todo file
-        let content = match fs::read_to_string(TODO_FILE) {
+        let content = match fs::read_to_string(&config.todo_file) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => "".to_string(),
             Err(e) => panic!("Failed to read todo file: {e}"),
         };
         // Parse it into Tasks
-        self.tasks = content.lines().filter_map(Task::from_str).collect();
+        let tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, config.file_indent)).collect();
         // Verify with a round trip test
-        assert_eq!(content, self.serialize());
+        assert_eq!(content, Self::serialize_tasks(&tasks, config.file_indent));
+
+        let selection = {
+            if tasks.is_empty() { None }
+            else { Some(0) }
+        };
+
+        Tui {
+            config,
+            tasks,
+            selection,
+            ..Default::default()
+        }
+    }
+
+    // TODO Should this be here?
+    fn serialize_tasks(tasks: &[Task], indent_width: usize) -> String {
+        tasks.iter().fold(String::new(), |mut acc, task| {
+            let line = task.to_str(indent_width) + "\n";
+            acc.push_str(&line);
+            acc
+        })
     }
 
     fn save_todos(&self) {
         // Serialize todos
-        let content = self.serialize();
+        let content = Self::serialize_tasks(&self.tasks, self.config.file_indent);
         // Verify with a round trip test
-        let reconstructed_tasks: Vec<Task> = content.lines().filter_map(Task::from_str).collect();
+        let reconstructed_tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, self.config.file_indent)).collect();
         assert_eq!(self.tasks, reconstructed_tasks);
         // Save to file
-        fs::write(TODO_FILE, content).unwrap();
+        fs::write(&self.config.todo_file, content).unwrap();
     }
 
     fn get_parent(&self, idx: usize) -> Option<usize> {
@@ -551,7 +558,7 @@ impl Tui {
                     if self.selection == Some(i) {
                         if let InputMode::Text = self.input_mode {
                             let cursor_x = chunks[1].x
-                                + (task.indent * RENDER_INDENT) as u16
+                                + (task.indent * self.config.render_indent) as u16
                                 + self.text_input.visual_cursor() as u16
                                 + 3;
                             let cursor_y = chunks[1].y + i as u16 + 1;
@@ -561,7 +568,7 @@ impl Tui {
                         }
                     }
 
-                    let prefix = "\u{00A0}".repeat(task.indent * RENDER_INDENT);
+                    let prefix = "\u{00A0}".repeat(task.indent * self.config.render_indent);
                     Line::from(vec![prefix.dark_gray(), marker, Span::from(" "), title])
                 })
                 .collect();
@@ -570,7 +577,7 @@ impl Tui {
             let paragraph = Paragraph::new(text).wrap(Wrap { trim: true }).block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!(" {} ", TODO_FILE)),
+                    .title(format!(" {} ", self.config.todo_file)),
             );
             frame.render_widget(paragraph, chunks[1]);
         })?;

@@ -7,6 +7,8 @@ edition = "2021"
 ratatui = "0.30.1"
 crossterm = "0.29"
 tui-input = "0.15.3"
+serde = { version = "1.0.228", default-features = false, features = ["derive", "alloc"] }
+toml = "1.1.2"
 
 [[bin]]
 name = "todo_tui"

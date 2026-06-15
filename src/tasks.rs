@@ -1,5 +1,3 @@
-use crate::config::*;
-
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Task {
     pub title: String,
@@ -8,7 +6,7 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn from_str(string: &str) -> Option<Task> {
+    pub fn from_str(string: &str, indent_width: usize) -> Option<Task> {
         let trimmed = string.trim();
         if !trimmed.starts_with("- [") {
             return None;
@@ -20,7 +18,7 @@ impl Task {
         if title.is_empty() {
             return None;
         }
-        let indent = (string.len() - trimmed.len()) / FILE_INDENT;
+        let indent = (string.len() - trimmed.len()) / indent_width;
         Some(Task {
             title,
             completed,
@@ -28,8 +26,8 @@ impl Task {
         })
     }
 
-    pub fn to_str(&self) -> String {
-        let whitespace = " ".repeat(self.indent * FILE_INDENT);
+    pub fn to_str(&self, indent_width: usize) -> String {
+        let whitespace = " ".repeat(self.indent * indent_width);
         let marker = if self.completed { "x" } else { " " };
         format!("{}- [{}] {}", whitespace, marker, self.title)
     }
