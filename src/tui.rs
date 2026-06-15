@@ -262,6 +262,8 @@ impl Tui {
         }
     }
 
+    // TODO Save file after every edit
+    // TODO Undo/redo
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
@@ -345,6 +347,16 @@ impl Tui {
                                     ..Default::default()
                                 };
                                 self.tasks.insert(idx, new_task);
+                                self.text_input = Input::new("".to_string());
+                                self.input_mode = InputMode::Text;
+                            }
+                            KeyCode::Char('s') => {
+                                let new_task = Task {
+                                    indent: self.tasks[idx].indent + 1,
+                                    ..Default::default()
+                                };
+                                self.tasks.insert(idx + 1, new_task);
+                                self.selection = Some(idx + 1);
                                 self.text_input = Input::new("".to_string());
                                 self.input_mode = InputMode::Text;
                             }
