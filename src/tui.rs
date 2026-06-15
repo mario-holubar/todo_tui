@@ -351,6 +351,7 @@ impl Tui {
                                 self.toggle_completed(idx);
                                 true
                             }
+                            // TODO Tree navigation?
                             KeyCode::Char('j') => {
                                 self.selection = Some((idx + 1).min(self.tasks.len() - 1));
                                 false

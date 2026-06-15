@@ -1,3 +1,4 @@
+// TODO Revisit nested structure
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Task {
     pub title: String,
