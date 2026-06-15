@@ -54,12 +54,99 @@ impl Tui {
         assert_eq!(content, reconstructed_lines.join("\n"));
     }
 
+    fn get_parent(&self, idx: usize) -> Option<usize> {
+        if idx == 0 || self.tasks[idx].indent == 0 { return None; }
+        else {
+            for i in (0..idx).rev() {
+                if self.tasks[i].indent == self.tasks[idx].indent - 1 {
+                    return Some(i)
+                }
+            }
+        }
+        None
+    }
+
+    fn get_children(&self, idx: usize) -> Vec<usize> {
+        let task = &self.tasks[idx];
+        let mut children = vec![];
+        for i in (idx + 1)..(self.tasks.len() - 1) {
+            let t = &self.tasks[i];
+            if t.indent == task.indent + 1 {
+                children.push(i);
+            }
+            else if t.indent <= task.indent {
+                break;
+            }
+        }
+        children
+    }
+
+    fn get_siblings(&self, idx: usize) -> Vec<usize> {
+        let task = &self.tasks[idx];
+        let mut siblings = vec![];
+        for i in (0..idx).rev() {
+            let t = &self.tasks[i];
+            if t.indent == task.indent {
+                siblings.push(i);
+            }
+            else if t.indent <= task.indent {
+                break;
+            }
+        }
+        for i in (idx + 1)..(self.tasks.len() - 1) {
+            let t = &self.tasks[i];
+            if t.indent == task.indent {
+                siblings.push(i);
+            }
+            else if t.indent <= task.indent {
+                break;
+            }
+        }
+        siblings
+    }
+
+    fn next_sibling(&self, idx: usize) -> Option<usize> {
+        let task = &self.tasks[idx];
+        for i in (idx + 1)..(self.tasks.len() - 1) {
+            let t = &self.tasks[i];
+            if t.indent == task.indent {
+                return Some(i);
+            }
+            else if t.indent <= task.indent {
+                break;
+            }
+        }
+        None
+    }
+
+    fn prev_sibling(&self, idx: usize) -> Option<usize> {
+        let task = &self.tasks[idx];
+        for i in (0..idx).rev() {
+            let t = &self.tasks[i];
+            if t.indent == task.indent {
+                return Some(i);
+            }
+            else if t.indent <= task.indent {
+                break;
+            }
+        }
+        None
+    }
+
     fn has_children(&self, idx: usize) -> bool {
         self.tasks.len() > idx + 1 && self.tasks[idx + 1].indent > self.tasks[idx].indent
     }
 
-    fn last_child(&self, idx: usize, indent: usize) -> bool {
+    fn is_last_child(&self, idx: usize, indent: usize) -> bool {
         self.tasks.len() <= idx + 1 || self.tasks[idx + 1].indent <= indent
+    }
+
+    fn is_first_actionable(&self, idx: usize) -> bool {
+        if self.tasks[idx].indent == 0 {
+            return true;
+        }
+        let Some(parent) = self.get_parent(idx) else { return true; };
+        self.is_first_actionable(parent) && !self.get_siblings(idx).iter().any(|&i| i < idx && !self.tasks[i].completed)
     }
 
     // Process input. Returns true if the loop should exit
@@ -195,10 +282,15 @@ impl Tui {
                 .iter()
                 .enumerate()
                 .map(|(i, task)| {
+                    let has_children = self.has_children(i);
+                    let is_first_actionable = self.is_first_actionable(i);
                     let marker = if task.completed {
                         "✔".green()
-                    } else if self.has_children(i) {
-                        "➤".dark_gray()
+                    } else if has_children {
+                        "‣".dark_gray()
+                    }
+                    else if is_first_actionable {
+                        "○".yellow()
                     }
                     else {
                         "•".dark_gray()
@@ -209,7 +301,15 @@ impl Tui {
 
                     let mut style = Style::default();
                     if task.completed {
-                        style = style.fg(Color::DarkGray).crossed_out();
+                        style = style.fg(Color::DarkGray).dim();
+                    }
+                    else if is_first_actionable {
+                        if !has_children {
+                            style = style.yellow();
+                        }
+                    }
+                    else {
+                        style = style.dim();
                     }
                     if self.selection == Some(i) {
                         if let InputMode::Text = self.input_mode {
@@ -226,7 +326,7 @@ impl Tui {
 
                     let mut prefix = "".to_string();
                     for level in 0..task.indent {
-                        prefix += if self.last_child(i, level) { "╰" } else { "│" };
+                        prefix += if self.is_last_child(i, level) { "╰" } else { "│" };
                         prefix += &"\u{00A0}".repeat(RENDER_INDENT - 1);
                     }
                     Line::from(vec![
