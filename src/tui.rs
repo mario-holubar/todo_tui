@@ -14,7 +14,7 @@ use tui_input::Input;
 use crate::config::*;
 use crate::tasks::*;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 enum InputMode {
     #[default]
     Normal,
@@ -278,6 +278,31 @@ impl Tui {
         }
     }
 
+    fn begin_editing(&mut self, idx: usize) {
+        self.text_input = take(&mut self.text_input)
+            .with_value(self.tasks[idx].title.clone());
+        self.input_mode = InputMode::Text;
+    }
+
+    // Returns new selection index
+    fn finish_editing(&mut self) -> Option<usize> {
+        assert!(self.input_mode == InputMode::Text);
+        self.input_mode = InputMode::Normal;
+        let idx = self.selection.unwrap();
+        if self.tasks[idx].title.is_empty() {
+            self.tasks.remove(idx);
+            if self.tasks.is_empty() {
+                None
+            }
+            else {
+                Some(idx.saturating_sub(1))
+            }
+        }
+        else {
+            Some(idx)
+        }
+    }
+
     // TODO Undo/redo
     // TODO Keybind config
     // Process input. Returns true if the loop should exit
@@ -342,9 +367,7 @@ impl Tui {
                                 true
                             }
                             KeyCode::Char('e' | 'c' | 'a') => {
-                                self.text_input = take(&mut self.text_input)
-                                    .with_value(self.tasks[idx].title.clone());
-                                self.input_mode = InputMode::Text;
+                                self.begin_editing(idx);
                                 false
                             }
                             KeyCode::Char('i') => {
@@ -370,18 +393,17 @@ impl Tui {
                                 };
                                 self.tasks.insert(idx + 1, new_task);
                                 self.selection = Some(idx + 1);
-                                self.text_input = Input::new("".to_string());
-                                self.input_mode = InputMode::Text;
+                                self.begin_editing(idx + 1);
                                 false
                             }
+                            // TODO Move to shift match
                             KeyCode::Char('O') => {
                                 let new_task = Task {
                                     indent: self.tasks[idx].indent,
                                     ..Default::default()
                                 };
                                 self.tasks.insert(idx, new_task);
-                                self.text_input = Input::new("".to_string());
-                                self.input_mode = InputMode::Text;
+                                self.begin_editing(idx);
                                 false
                             }
                             KeyCode::Char('s') => {
@@ -391,8 +413,7 @@ impl Tui {
                                 };
                                 self.tasks.insert(idx + 1, new_task);
                                 self.selection = Some(idx + 1);
-                                self.text_input = Input::new("".to_string());
-                                self.input_mode = InputMode::Text;
+                                self.begin_editing(idx + 1);
                                 false
                             }
                             _ => {
@@ -443,56 +464,32 @@ impl Tui {
                     return true;
                 }
                 KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
-                    // TODO finish_editing function
-                    let idx = self.selection.as_mut().unwrap();
-                    if self.tasks[*idx].title.is_empty() {
-                        self.tasks.remove(*idx);
-                        if self.tasks.is_empty() {
-                            self.selection = None;
-                        }
-                        else {
-                            *idx = idx.saturating_sub(1);
-                        }
-                    }
-                    self.input_mode = InputMode::Normal;
+                    self.selection = self.finish_editing();
                     true
                 }
                 // TODO Add another task on Enter
                 KeyCode::Enter | KeyCode::Esc => {
-                    // TODO finish_editing function
-                    let idx = self.selection.as_mut().unwrap();
-                    if self.tasks[*idx].title.is_empty() {
-                        self.tasks.remove(*idx);
-                        if self.tasks.is_empty() {
-                            self.selection = None;
-                        }
-                        else {
-                            *idx = idx.saturating_sub(1);
-                        }
-                    }
-                    self.input_mode = InputMode::Normal;
+                    self.selection = self.finish_editing();
                     true
                 }
                 KeyCode::Tab => {
                     self.tasks[self.selection.unwrap()].indent();
-                    false
+                    true
                 }
                 KeyCode::BackTab => {
                     self.tasks[self.selection.unwrap()].dedent();
-                    false
+                    true
                 }
                 _ => {
                     self.text_input.handle_event(&Event::Key(key_event));
                     self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
-                    false
+                    true
                 }
             },
         };
 
-        if let InputMode::Normal = self.input_mode {
-            if state_changed {
-                self.save_todos();
-            }
+        if self.input_mode == InputMode::Normal && state_changed {
+            self.save_todos();
         }
 
         false
