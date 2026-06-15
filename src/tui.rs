@@ -463,8 +463,17 @@ impl Tui {
                     self.selection = self.finish_editing();
                     true
                 }
-                // TODO Add another task on Enter
-                KeyCode::Enter | KeyCode::Esc => {
+                KeyCode::Enter => {
+                    let add_another = !self.tasks[self.selection.unwrap()].title.is_empty();
+                    self.selection = self.finish_editing();
+                    if add_another {
+                        let idx = self.selection.unwrap();
+                        self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
+                        self.begin_editing(self.selection.unwrap());
+                    }
+                    true
+                }
+                KeyCode::Esc => {
                     self.selection = self.finish_editing();
                     true
                 }
