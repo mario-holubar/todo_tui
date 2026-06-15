@@ -282,34 +282,25 @@ impl Tui {
                 .iter()
                 .enumerate()
                 .map(|(i, task)| {
-                    let has_children = self.has_children(i);
-                    let is_first_actionable = self.is_first_actionable(i);
-                    let marker = if task.completed {
-                        "✔".green()
-                    } else if has_children {
-                        "‣".dark_gray()
-                    }
-                    else if is_first_actionable {
-                        "○".yellow()
-                    }
-                    else {
-                        "•".dark_gray()
-                    };
+                    let mut marker = "◯".reset();
+                    let mut title = task.title.replace(" ", "\u{00A0}").reset(); // Non-breaking space so strikethrough applies
 
-                    // Non-breaking space so strikethrough applies
-                    let title = task.title.replace(" ", "\u{00A0}");
-
-                    let mut style = Style::default();
                     if task.completed {
-                        style = style.fg(Color::DarkGray).dim();
+                        marker = "◉".fg(Color::DarkGray).dim();
+                        title = title.fg(Color::DarkGray).dim();
                     }
-                    else if is_first_actionable {
-                        if !has_children {
-                            style = style.yellow();
-                        }
+                    else if self.has_children(i) {
+                        //marker = "▷".dim();
+                        marker = marker.reset();
+                        title = title.reset();
+                    }
+                    else if self.is_first_actionable(i) {
+                        marker = marker.green();
+                        title = title.green().bold();
                     }
                     else {
-                        style = style.dim();
+                        marker = marker.dim();
+                        title = title.dim();
                     }
                     if self.selection == Some(i) {
                         if let InputMode::Text = self.input_mode {
@@ -320,7 +311,7 @@ impl Tui {
                             let cursor_y = chunks[1].y + i as u16 + 1;
                             frame.set_cursor_position((cursor_x, cursor_y));
                         } else {
-                            style = style.bg(Color::Rgb(56, 56, 64));
+                            title = title.bg(Color::Rgb(56, 56, 64));
                         }
                     }
 
@@ -335,7 +326,7 @@ impl Tui {
                         prefix.dark_gray(),
                         marker,
                         Span::from(" "),
-                        Span::styled(title, style),
+                        title,
                     ])
                 })
                 .collect();
