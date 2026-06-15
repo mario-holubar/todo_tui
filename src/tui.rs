@@ -37,21 +37,35 @@ impl Tui {
         tui
     }
 
+    fn serialize(&self) -> String {
+        self.tasks.iter().fold(String::new(), |mut acc, task| {
+            let line = task.to_str() + "\n";
+            acc.push_str(&line);
+            acc
+        })
+    }
+
     fn load_todos(&mut self) {
         // Read the todo file
         let content = match fs::read_to_string(TODO_FILE) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => "".to_string(),
-            Err(e) => panic!("Failed to read file: {e}"),
+            Err(e) => panic!("Failed to read todo file: {e}"),
         };
-        // Trim trailing newline
-        let content = content.trim_end();
         // Parse it into Tasks
         self.tasks = content.lines().filter_map(Task::from_str).collect();
         // Verify with a round trip test
-        let reconstructed_lines: Vec<String> =
-            self.tasks.iter().map(|task| task.to_str()).collect();
-        assert_eq!(content, reconstructed_lines.join("\n"));
+        assert_eq!(content, self.serialize());
+    }
+
+    fn save_todos(&self) {
+        // Serialize todos
+        let content = self.serialize();
+        // Verify with a round trip test
+        let reconstructed_tasks: Vec<Task> = content.lines().filter_map(Task::from_str).collect();
+        assert_eq!(self.tasks, reconstructed_tasks);
+        // Save to file
+        fs::write(TODO_FILE, content).unwrap();
     }
 
     fn get_parent(&self, idx: usize) -> Option<usize> {
@@ -262,14 +276,13 @@ impl Tui {
         }
     }
 
-    // TODO Save file after every edit
     // TODO Undo/redo
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
-        match self.input_mode {
+        let state_changed = match self.input_mode {
             InputMode::Normal => {
                 // Normal mode
-                match key_event.code {
+                let state_changed = match key_event.code {
                     KeyCode::Char('q') => {
                         return true;
                     }
@@ -278,32 +291,43 @@ impl Tui {
                         self.selection = Some(0);
                         self.text_input = Input::new("".to_string());
                         self.input_mode = InputMode::Text;
+                        true
                     }
-                    _ => {}
-                }
+                    _ => {
+                        false
+                    }
+                };
                 // Normal mode, selection active
-                if let Some(idx) = self.selection {
+                state_changed || if let Some(idx) = self.selection {
                     match key_event.modifiers {
                         KeyModifiers::NONE => match key_event.code {
                             KeyCode::Char('x' | ' ') | KeyCode::Enter => {
                                 self.toggle_completed(idx);
+                                true
                             }
                             KeyCode::Char('j') => {
-                                self.selection = Some((idx + 1).min(self.tasks.len() - 1))
+                                self.selection = Some((idx + 1).min(self.tasks.len() - 1));
+                                false
                             }
-                            KeyCode::Char('k') => self.selection = Some(idx.saturating_sub(1)),
+                            KeyCode::Char('k') => {
+                                self.selection = Some(idx.saturating_sub(1));
+                                false
+                            },
                             KeyCode::Char('h') => {
                                 if let Some(p) = self.get_parent(idx) {
                                     self.selection = Some(p);
                                 }
+                                false
                             }
                             KeyCode::Char('l') => {
                                 if let Some(&c) = self.get_children(idx).first() {
                                     self.selection = Some(c);
                                 }
+                                false
                             }
                             KeyCode::Char('<') | KeyCode::BackTab => {
                                 self.selection = Some(self.promote(idx));
+                                true
                             }
                             KeyCode::Char('>') | KeyCode::Tab =>
                             {
@@ -311,17 +335,20 @@ impl Tui {
                                 if !self.is_first_child(idx) {
                                     self.demote(idx);
                                 }
+                                true
                             }
                             KeyCode::Char('e' | 'c' | 'a') => {
                                 self.text_input = take(&mut self.text_input)
                                     .with_value(self.tasks[idx].title.clone());
                                 self.input_mode = InputMode::Text;
+                                false
                             }
                             KeyCode::Char('i') => {
                                 self.text_input = take(&mut self.text_input)
                                     .with_value(self.tasks[idx].title.clone())
                                     .with_cursor(0);
                                 self.input_mode = InputMode::Text;
+                                false
                             }
                             KeyCode::Char('d') => {
                                 self.tasks.remove(idx);
@@ -330,6 +357,7 @@ impl Tui {
                                 } else {
                                     self.selection = Some(idx.min(self.tasks.len() - 1));
                                 }
+                                true
                             }
                             KeyCode::Char('o') => {
                                 let new_task = Task {
@@ -340,6 +368,7 @@ impl Tui {
                                 self.selection = Some(idx + 1);
                                 self.text_input = Input::new("".to_string());
                                 self.input_mode = InputMode::Text;
+                                false
                             }
                             KeyCode::Char('O') => {
                                 let new_task = Task {
@@ -349,6 +378,7 @@ impl Tui {
                                 self.tasks.insert(idx, new_task);
                                 self.text_input = Input::new("".to_string());
                                 self.input_mode = InputMode::Text;
+                                false
                             }
                             KeyCode::Char('s') => {
                                 let new_task = Task {
@@ -359,18 +389,24 @@ impl Tui {
                                 self.selection = Some(idx + 1);
                                 self.text_input = Input::new("".to_string());
                                 self.input_mode = InputMode::Text;
+                                false
                             }
-                            _ => {}
+                            _ => {
+                                false
+                            }
                         },
                         KeyModifiers::CONTROL => match key_event.code {
                             KeyCode::Char('j') => {
                                 self.selection = Some(self.transpose_down(idx));
+                                true
                             }
                             KeyCode::Char('k') => {
                                 self.selection = Some(self.transpose_up(idx));
+                                true
                             }
                             KeyCode::Char('h') => {
                                 self.selection = Some(self.promote(idx));
+                                true
                             }
                             KeyCode::Char('l') =>
                             {
@@ -378,11 +414,19 @@ impl Tui {
                                 if !self.is_first_child(idx) {
                                     self.demote(idx);
                                 }
+                                true
                             }
-                            _ => {}
+                            _ => {
+                                false
+                            }
                         },
-                        _ => {}
+                        _ => {
+                            false
+                        }
                     }
+                }
+                else {
+                    false
                 }
             }
             InputMode::Text => match key_event.code {
@@ -398,20 +442,31 @@ impl Tui {
                             *idx = idx.saturating_sub(1);
                         }
                     }
-                    self.input_mode = InputMode::Normal
+                    self.input_mode = InputMode::Normal;
+                    true
                 }
                 KeyCode::Tab => {
                     self.tasks[self.selection.unwrap()].indent();
+                    false
                 }
                 KeyCode::BackTab => {
                     self.tasks[self.selection.unwrap()].dedent();
+                    false
                 }
                 _ => {
                     self.text_input.handle_event(&Event::Key(key_event));
                     self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
+                    false
                 }
             },
+        };
+
+        if let InputMode::Normal = self.input_mode {
+            if state_changed {
+                self.save_todos();
+            }
         }
+
         false
     }
 
