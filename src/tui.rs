@@ -180,13 +180,6 @@ impl Tui {
         self.set_children_completion(idx);
     }
 
-    fn demote(&mut self, idx: usize) {
-        self.get_children(idx).iter().for_each(|&i| self.demote(i));
-        self.tasks[idx].indent();
-
-        if let Some(p) = self.get_parent(idx) { self.update_parent_completion(p); }
-    }
-
     // Returns new index of task
     fn promote(&mut self, mut idx: usize) -> usize {
         if self.tasks[idx].indent == 0 { return idx; };
@@ -210,6 +203,13 @@ impl Tui {
         idx
     }
 
+    fn demote(&mut self, idx: usize) {
+        self.get_children(idx).iter().for_each(|&i| self.demote(i));
+        self.tasks[idx].indent();
+
+        if let Some(p) = self.get_parent(idx) { self.update_parent_completion(p); }
+    }
+
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
@@ -229,81 +229,90 @@ impl Tui {
                 }
                 // Normal mode, selection active
                 if let Some(idx) = self.selection {
-                    // TODO Match modifiers first
                     // TODO Ctrl-j/k to move task and children
-                    match key_event.code {
-                        KeyCode::Char('x' | ' ') | KeyCode::Enter => {
-                            self.toggle_completed(idx);
-                        }
-                        KeyCode::Char('j') => {
-                            self.selection = Some((idx + 1).min(self.tasks.len() - 1))
-                        }
-                        KeyCode::Char('k') => {
-                            self.selection = Some(idx.saturating_sub(1))
-                        }
-                        KeyCode::Char('h') if key_event.modifiers == KeyModifiers::NONE => {
-                            if let Some(p) = self.get_parent(idx) {
-                                self.selection = Some(p);
+                    match key_event.modifiers {
+                        KeyModifiers::NONE => {
+                            match key_event.code {
+                                KeyCode::Char('x' | ' ') | KeyCode::Enter => {
+                                    self.toggle_completed(idx);
+                                }
+                                KeyCode::Char('j') => {
+                                    self.selection = Some((idx + 1).min(self.tasks.len() - 1))
+                                }
+                                KeyCode::Char('k') => {
+                                    self.selection = Some(idx.saturating_sub(1))
+                                }
+                                KeyCode::Char('h') => {
+                                    if let Some(p) = self.get_parent(idx) {
+                                        self.selection = Some(p);
+                                    }
+                                }
+                                KeyCode::Char('l') => {
+                                    if let Some(&c) = self.get_children(idx).first() {
+                                        self.selection = Some(c);
+                                    }
+                                }
+                                KeyCode::Char('<') | KeyCode::BackTab => {
+                                    self.selection = Some(self.promote(idx));
+                                }
+                                KeyCode::Char('>') | KeyCode::Tab => {
+                                    if !self.is_first_child(idx) {
+                                        self.demote(idx);
+                                    }
+                                }
+                                KeyCode::Char('e' | 'c' | 'a') => {
+                                    self.text_input = take(&mut self.text_input).with_value(self.tasks[idx].title.clone());
+                                    self.input_mode = InputMode::Text;
+                                }
+                                KeyCode::Char('i') => {
+                                    self.text_input = take(&mut self.text_input)
+                                        .with_value(self.tasks[idx].title.clone())
+                                        .with_cursor(0);
+                                    self.input_mode = InputMode::Text;
+                                }
+                                KeyCode::Char('d') => {
+                                    self.tasks.remove(idx);
+                                    if self.tasks.is_empty() {
+                                        self.selection = None;
+                                    }
+                                    else {
+                                        self.selection = Some(idx.min(self.tasks.len() - 1));
+                                    }
+                                }
+                                KeyCode::Char('o') => {
+                                    let new_task = Task {
+                                        indent: self.tasks[idx].indent,
+                                        ..Default::default()
+                                    };
+                                    self.tasks.insert(idx + 1, new_task);
+                                    self.selection = Some(idx + 1);
+                                    self.text_input = Input::new("".to_string());
+                                    self.input_mode = InputMode::Text;
+                                }
+                                KeyCode::Char('O') => {
+                                    let new_task = Task {
+                                        indent: self.tasks[idx].indent,
+                                        ..Default::default()
+                                    };
+                                    self.tasks.insert(idx, new_task);
+                                    self.text_input = Input::new("".to_string());
+                                    self.input_mode = InputMode::Text;
+                                }
+                                _ => {}
                             }
                         }
-                        KeyCode::Char('l') if key_event.modifiers == KeyModifiers::NONE => {
-                            if let Some(&c) = self.get_children(idx).first() {
-                                self.selection = Some(c);
+                        KeyModifiers::CONTROL => {
+                            match key_event.code {
+                                KeyCode::Char('h') => {
+                                    self.selection = Some(self.promote(idx));
+                                }
+                                KeyCode::Char('l') => {
+                                    if !self.is_first_child(idx) {
+                                        self.demote(idx);
+                                    }
+                                }
+                                _ => {}
                             }
-                        }
-                        KeyCode::Char('<') | KeyCode::BackTab => {
-                            self.selection = Some(self.promote(idx));
-                        }
-                        KeyCode::Char('h') if key_event.modifiers == KeyModifiers::CONTROL => {
-                            self.selection = Some(self.promote(idx));
-                        }
-                        KeyCode::Char('>') | KeyCode::Tab => {
-                            if !self.is_first_child(idx) {
-                                self.demote(idx);
-                            }
-                        }
-                        KeyCode::Char('l') if key_event.modifiers == KeyModifiers::CONTROL => {
-                            if !self.is_first_child(idx) {
-                                self.demote(idx);
-                            }
-                        }
-                        KeyCode::Char('e' | 'c' | 'a') => {
-                            self.text_input = take(&mut self.text_input).with_value(self.tasks[idx].title.clone());
-                            self.input_mode = InputMode::Text;
-                        }
-                        KeyCode::Char('i') => {
-                            self.text_input = take(&mut self.text_input)
-                                .with_value(self.tasks[idx].title.clone())
-                                .with_cursor(0);
-                            self.input_mode = InputMode::Text;
-                        }
-                        KeyCode::Char('d') => {
-                            self.tasks.remove(idx);
-                            if self.tasks.is_empty() {
-                                self.selection = None;
-                            }
-                            else {
-                                self.selection = Some(idx.min(self.tasks.len() - 1));
-                            }
-                        }
-                        KeyCode::Char('o') => {
-                            let new_task = Task {
-                                indent: self.tasks[idx].indent,
-                                ..Default::default()
-                            };
-                            self.tasks.insert(idx + 1, new_task);
-                            self.selection = Some(idx + 1);
-                            self.text_input = Input::new("".to_string());
-                            self.input_mode = InputMode::Text;
-                        }
-                        KeyCode::Char('O') => {
-                            let new_task = Task {
-                                indent: self.tasks[idx].indent,
-                                ..Default::default()
-                            };
-                            self.tasks.insert(idx, new_task);
-                            self.text_input = Input::new("".to_string());
-                            self.input_mode = InputMode::Text;
                         }
                         _ => {}
                     }
