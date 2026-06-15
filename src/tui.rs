@@ -69,7 +69,7 @@ impl Tui {
     fn get_children(&self, idx: usize) -> Vec<usize> {
         let task = &self.tasks[idx];
         let mut children = vec![];
-        for i in (idx + 1)..(self.tasks.len() - 1) {
+        for i in (idx + 1)..self.tasks.len() {
             let t = &self.tasks[i];
             if t.indent == task.indent + 1 {
                 children.push(i);
@@ -149,6 +149,25 @@ impl Tui {
         self.is_first_actionable(parent) && !self.get_siblings(idx).iter().any(|&i| i < idx && !self.tasks[i].completed)
     }
 
+    fn update_parent_completion(&mut self, idx: usize) {
+        let Some(parent) = self.get_parent(idx) else { return; };
+        self.tasks[parent].completed = self.get_children(parent).iter().all(|&i| self.tasks[i].completed);
+        self.update_parent_completion(parent);
+    }
+
+    fn update_children_completion(&mut self, idx: usize) {
+        self.get_children(idx).iter().for_each(|&i| {
+            self.tasks[i].completed = self.tasks[idx].completed;
+            self.update_children_completion(i);
+        });
+    }
+
+    fn toggle_completed(&mut self, idx: usize) {
+        self.tasks[idx].toggle_completed();
+        self.update_parent_completion(idx);
+        self.update_children_completion(idx);
+    }
+
     // Process input. Returns true if the loop should exit
     fn update(&mut self, key_event: KeyEvent) -> bool {
         match self.input_mode {
@@ -169,14 +188,14 @@ impl Tui {
                 // Normal mode, selection active
                 if let Some(idx) = self.selection {
                     match key_event.code {
+                        KeyCode::Char('x' | ' ') | KeyCode::Enter => {
+                            self.toggle_completed(idx);
+                        }
                         KeyCode::Char('j') => {
                             self.selection = Some((idx + 1).min(self.tasks.len() - 1))
                         }
                         KeyCode::Char('k') => {
                             self.selection = Some(idx.saturating_sub(1))
-                        }
-                        KeyCode::Char('x' | ' ') | KeyCode::Enter => {
-                            self.tasks[idx].toggle_completed()
                         }
                         KeyCode::Char('<') => {
                             self.tasks[idx].dedent()
