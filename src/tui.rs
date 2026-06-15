@@ -205,6 +205,16 @@ impl Tui {
         self.set_children_completion(idx);
     }
 
+    // Returns index of new task
+    fn add_task(&mut self, idx: usize, indent: usize) -> Option<usize> {
+        let new_task = Task {
+            indent,
+            ..Default::default()
+        };
+        self.tasks.insert(idx, new_task);
+        Some(idx)
+    }
+
     // Returns new index of task
     fn transpose_up(&mut self, idx: usize) -> usize {
         let prev = match self.prev_sibling(idx) {
@@ -387,32 +397,18 @@ impl Tui {
                                 true
                             }
                             KeyCode::Char('o') => {
-                                let new_task = Task {
-                                    indent: self.tasks[idx].indent,
-                                    ..Default::default()
-                                };
-                                self.tasks.insert(idx + 1, new_task);
-                                self.selection = Some(idx + 1);
+                                self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
                                 self.begin_editing(idx + 1);
                                 false
                             }
                             // TODO Move to shift match
                             KeyCode::Char('O') => {
-                                let new_task = Task {
-                                    indent: self.tasks[idx].indent,
-                                    ..Default::default()
-                                };
-                                self.tasks.insert(idx, new_task);
+                                self.selection = self.add_task(idx, self.tasks[idx].indent);
                                 self.begin_editing(idx);
                                 false
                             }
                             KeyCode::Char('s') => {
-                                let new_task = Task {
-                                    indent: self.tasks[idx].indent + 1,
-                                    ..Default::default()
-                                };
-                                self.tasks.insert(idx + 1, new_task);
-                                self.selection = Some(idx + 1);
+                                self.selection = self.add_task(idx + 1, self.tasks[idx].indent + 1);
                                 self.begin_editing(idx + 1);
                                 false
                             }
