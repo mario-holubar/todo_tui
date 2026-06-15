@@ -4,7 +4,6 @@ use std::{error::Error, fs, io::Stdout, mem::take};
 // TODO Or get rid of ratatui and just use crossterm
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::Constraint,
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
@@ -396,6 +395,7 @@ impl Tui {
                                 false
                             }
                             KeyCode::Char('d') => {
+                                // TODO Unindent or delete children
                                 self.tasks.remove(idx);
                                 if self.tasks.is_empty() {
                                     self.selection = None;
@@ -520,20 +520,7 @@ impl Tui {
         terminal.draw(|frame| {
             let area = frame.area();
 
-            // Split layout: header takes 2 rows, content takes the rest
-            let chunks = Layout::vertical([Constraint::Length(2), Constraint::Min(2)]).split(area);
-
-            // Render header block
-            let header = Paragraph::new(Line::from(Span::styled(
-                " Todos ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )))
-            .block(Block::default().borders(Borders::BOTTOM));
-            frame.render_widget(header, chunks[0]);
-
-            // Render parsed tasks in the main area
+            // Render tasks
             let task_lines: Vec<Line> = self
                 .tasks
                 .iter()
@@ -558,11 +545,11 @@ impl Tui {
                     }
                     if self.selection == Some(i) {
                         if let InputMode::Text = self.input_mode {
-                            let cursor_x = chunks[1].x
+                            let cursor_x = area.x
                                 + (task.indent * self.config.render_indent) as u16
                                 + self.text_input.visual_cursor() as u16
                                 + 3;
-                            let cursor_y = chunks[1].y + i as u16 + 1;
+                            let cursor_y = area.y + i as u16 + 1;
                             frame.set_cursor_position((cursor_x, cursor_y));
                         } else {
                             title = title.bg(Color::Rgb(56, 56, 64));
@@ -580,7 +567,7 @@ impl Tui {
                     .borders(Borders::ALL)
                     .title(format!(" {} ", self.config.todo_file)),
             );
-            frame.render_widget(paragraph, chunks[1]);
+            frame.render_widget(paragraph, area);
         })?;
         Ok(())
     }
