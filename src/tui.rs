@@ -107,7 +107,7 @@ impl Tui {
 
     fn next_sibling(&self, idx: usize) -> Option<usize> {
         let task = &self.tasks[idx];
-        for i in (idx + 1)..(self.tasks.len() - 1) {
+        for i in (idx + 1)..self.tasks.len() {
             let t = &self.tasks[i];
             if t.indent == task.indent {
                 return Some(i);
@@ -181,24 +181,59 @@ impl Tui {
     }
 
     // Returns new index of task
+    fn transpose_up(&mut self, idx: usize) -> usize {
+        let prev = match self.prev_sibling(idx) {
+            Some(i) => i,
+            None => return idx,
+        };
+        let end_of_prev = self.end_of_children(prev);
+        let end_of_task = self.end_of_children(idx);
+
+        // Swap the current task and its previous sibling (including children)
+        let size_of_prev = end_of_prev + 1 - prev;
+        let size_of_task = end_of_task + 1 - idx;
+        self.tasks[prev..=end_of_task].rotate_right(size_of_task);
+
+        idx - size_of_prev
+    }
+
+    // Returns new index of task
+    fn transpose_down(&mut self, idx: usize) -> usize {
+        let next = match self.next_sibling(idx) {
+            Some(i) => i,
+            None => return idx,
+        };
+        let end_of_task = self.end_of_children(idx);
+        let end_of_next = self.end_of_children(next);
+
+        // Swap the current task and its next sibling (including children)
+        let size_of_task = end_of_task + 1 - idx;
+        let size_of_next = end_of_next + 1 - next;
+        self.tasks[idx..=end_of_next].rotate_left(size_of_task);
+
+        idx + size_of_next
+    }
+
+    // Returns new index of task
     fn promote(&mut self, mut idx: usize) -> usize {
         if self.tasks[idx].indent == 0 { return idx; };
 
-        let old_parent = self.get_parent(idx);
-        let mut end_of_children = self.end_of_children(idx);
+        let parent = self.get_parent(idx);
+        let mut end_of_task = self.end_of_children(idx);
 
         // Move task and children to after last sibling
-        if let Some(p) = old_parent {
+        if let Some(p) = parent {
             let last_sibling = *self.get_children(p).last().unwrap();
-            let end_of_siblings = self.end_of_children(last_sibling);
-            self.tasks[idx..=end_of_siblings].rotate_left(end_of_children + 1 - idx);
-            idx += end_of_siblings - end_of_children;
-            end_of_children = end_of_siblings;
+            let end_of_parent = self.end_of_children(last_sibling);
+            let size_of_task = end_of_task + 1 - idx;
+            self.tasks[idx..=end_of_parent].rotate_left(size_of_task);
+            idx += end_of_parent - end_of_task;
+            end_of_task = end_of_parent;
         }
 
-        for i in idx..=end_of_children { self.tasks[i].dedent() };
+        for i in idx..=end_of_task { self.tasks[i].dedent() };
 
-        if let Some(p) = old_parent { self.update_parent_completion(p); }
+        if let Some(p) = parent { self.update_parent_completion(p); }
 
         idx
     }
@@ -229,7 +264,6 @@ impl Tui {
                 }
                 // Normal mode, selection active
                 if let Some(idx) = self.selection {
-                    // TODO Ctrl-j/k to move task and children
                     match key_event.modifiers {
                         KeyModifiers::NONE => {
                             match key_event.code {
@@ -303,6 +337,12 @@ impl Tui {
                         }
                         KeyModifiers::CONTROL => {
                             match key_event.code {
+                                KeyCode::Char('j') => {
+                                    self.selection = Some(self.transpose_down(idx));
+                                }
+                                KeyCode::Char('k') => {
+                                    self.selection = Some(self.transpose_up(idx));
+                                }
                                 KeyCode::Char('h') => {
                                     self.selection = Some(self.promote(idx));
                                 }
