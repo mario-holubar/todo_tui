@@ -294,7 +294,9 @@ impl Tui {
         assert!(self.input_mode == InputMode::Text);
         self.input_mode = InputMode::Normal;
         let idx = self.selection.unwrap();
-        if self.tasks[idx].title.is_empty() {
+        let title = &mut self.tasks[idx].title;
+        *title = title.trim().to_string();
+        if title.is_empty() {
             self.tasks.remove(idx);
             if self.tasks.is_empty() {
                 None

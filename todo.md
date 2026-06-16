@@ -1,5 +1,4 @@
 - [ ] task with children should be grayed out if not first actionable
-- [ ] fix trailing whitespace panic
 - [ ] input refactor
     - [ ] keymap in config
     - [ ] data-driven setup instead of giant match statement
