@@ -513,15 +513,16 @@ impl Tui {
                 .map(|(i, task)| {
                     let mut marker = "◯".reset();
                     let mut title = task.title.replace(" ", "\u{00A0}").reset(); // Non-breaking space so strikethrough applies
+                    let is_first_actionable = self.is_first_actionable(i);
 
                     if task.completed {
                         marker = "◉".fg(Color::DarkGray).dim();
                         title = title.fg(Color::DarkGray).dim();
-                    } else if self.has_children(i) {
+                    } else if self.has_children(i) && is_first_actionable {
                         //marker = "▷".dim();
                         marker = marker.reset();
                         title = title.reset();
-                    } else if self.is_first_actionable(i) {
+                    } else if is_first_actionable {
                         marker = marker.green();
                         title = title.green().bold();
                     } else {
