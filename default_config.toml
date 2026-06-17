@@ -1,3 +1,40 @@
 todo_file = "todo.md" # Can be absolute or relative path
 file_indent = 4       # Number of spaces per indent in todo.md
 render_indent = 2     # Number of spaces per indent to render in the app
+
+[normal_keymap]
+"Ctrl+c" = "Quit"
+"Ctrl+d" = "Quit"
+"q" = "Quit"
+"n" = "AddTop"
+"x" = "Toggle"
+"Space" = "Toggle"
+"Enter" = "Toggle"
+"j" = "MoveDown"
+"k" = "MoveUp"
+"h" = "GoParent"
+"l" = "GoFirstChild"
+"<" = "Promote"
+"Shift+Tab" = "Promote"
+">" = "Demote"
+"Tab" = "Demote"
+"e" = "BeginEdit"
+"c" = "BeginEdit"
+"a" = "BeginEdit"
+"i" = "InsertAtCursor"
+"d" = "Delete"
+"o" = "AddBelow"
+"s" = "AddSubtask"
+"O" = "AddAbove"
+"Ctrl+j" = "TransposeDown"
+"Ctrl+k" = "TransposeUp"
+"Ctrl+h" = "Promote"
+"Ctrl+l" = "Demote"
+
+[text_keymap]
+"Ctrl+d" = "Quit"
+"Ctrl+c" = "EditDone"
+"Enter" = "AddBelow"
+"Esc" = "EditDone"
+"Tab" = "Demote"
+"Shift+Tab" = "Promote"

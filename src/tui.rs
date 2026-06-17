@@ -1,21 +1,43 @@
 use std::{error::Error, fs, io::Stdout, mem::take};
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyEvent};
 use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use tui_input::backend::crossterm::EventHandler;
-use tui_input::Input;
+use tui_input::{backend::crossterm::EventHandler, Input};
 
 use crate::config::Config;
 use crate::tasks::*;
 
 #[derive(Debug, Default, PartialEq)]
-enum InputMode {
+pub enum InputMode {
     #[default]
     Normal,
-    Text,
+    Edit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+pub enum Action {
+    Quit,
+    AddTop,
+    Toggle,
+    MoveDown,
+    MoveUp,
+    GoParent,
+    GoFirstChild,
+    Promote,
+    Demote,
+    BeginEdit,
+    InsertAtCursor,
+    Delete,
+    AddBelow,
+    AddSubtask,
+    AddAbove,
+    TransposeDown,
+    TransposeUp,
+    EditDone,
+    NoOp,
 }
 
 #[derive(Debug, Default)]
@@ -25,11 +47,12 @@ pub struct Tui {
     selection: Option<usize>,
     text_input: Input,
     input_mode: InputMode,
+    state_changed: bool,
 }
 
 impl Tui {
     pub fn new() -> Tui {
-        let config = Config::load();
+        let config = Config::load().unwrap();
 
         // Read the todo file
         let content = match fs::read_to_string(&config.todo_file) {
@@ -198,6 +221,7 @@ impl Tui {
             self.update_parent_completion(parent);
         }
         self.set_children_completion(idx);
+        self.state_changed = true;
     }
 
     // Returns index of new task
@@ -271,32 +295,39 @@ impl Tui {
             self.update_parent_completion(p);
         }
 
+        self.state_changed = true;
+
         idx
     }
 
     fn demote(&mut self, idx: usize) {
+        if self.is_first_child(idx) {
+            return; // TODO Indicate that no change was made
+        }
         self.get_children(idx).iter().for_each(|&i| self.demote(i));
         self.tasks[idx].indent();
 
         if let Some(p) = self.get_parent(idx) {
             self.update_parent_completion(p);
         }
+
+        self.state_changed = true;
     }
 
     fn begin_editing(&mut self, idx: usize) {
         self.text_input = take(&mut self.text_input)
             .with_value(self.tasks[idx].title.clone());
-        self.input_mode = InputMode::Text;
+        self.input_mode = InputMode::Edit;
     }
 
     // Returns new selection index
-    fn finish_editing(&mut self) -> Option<usize> {
-        assert!(self.input_mode == InputMode::Text);
+    fn finish_editing(&mut self) {
+        if self.input_mode != InputMode::Edit { return; }
         self.input_mode = InputMode::Normal;
         let idx = self.selection.unwrap();
         let title = &mut self.tasks[idx].title;
         *title = title.trim().to_string();
-        if title.is_empty() {
+        self.selection = if title.is_empty() {
             self.tasks.remove(idx);
             if self.tasks.is_empty() {
                 None
@@ -306,193 +337,120 @@ impl Tui {
             }
         }
         else {
+            self.state_changed = true;
             Some(idx)
-        }
+        };
     }
 
-    // Process input. Returns true if the loop should exit
+    // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
-        let state_changed = match self.input_mode {
-            InputMode::Normal => {
-                // Normal mode
-                let state_changed = match key_event.code {
-                    KeyCode::Char('q') => {
-                        return true;
-                    }
-                    KeyCode::Char('n') => {
-                        self.tasks.insert(0, Task::default());
-                        self.selection = Some(0);
-                        self.text_input = Input::new("".to_string());
-                        self.input_mode = InputMode::Text;
-                        true
-                    }
-                    _ => {
-                        false
-                    }
-                };
-                // Normal mode, selection active
-                state_changed || if let Some(idx) = self.selection {
-                    match key_event.modifiers {
-                        KeyModifiers::NONE => match key_event.code {
-                            KeyCode::Char('x' | ' ') | KeyCode::Enter => {
-                                self.toggle_completed(idx);
-                                true
-                            }
-                            KeyCode::Char('j') => {
-                                self.selection = Some((idx + 1).min(self.tasks.len() - 1));
-                                false
-                            }
-                            KeyCode::Char('k') => {
-                                self.selection = Some(idx.saturating_sub(1));
-                                false
-                            },
-                            KeyCode::Char('h') => {
-                                if let Some(p) = self.get_parent(idx) {
-                                    self.selection = Some(p);
-                                }
-                                false
-                            }
-                            KeyCode::Char('l') => {
-                                if let Some(&c) = self.get_children(idx).first() {
-                                    self.selection = Some(c);
-                                }
-                                false
-                            }
-                            // NOTE Pressing </> as Shift-,/. does not trigger shift modifier
-                            KeyCode::Char('<') | KeyCode::BackTab => {
-                                self.selection = Some(self.promote(idx));
-                                true
-                            }
-                            KeyCode::Char('>') | KeyCode::Tab => {
-                                #[allow(clippy::collapsible_match)]
-                                if !self.is_first_child(idx) {
-                                    self.demote(idx);
-                                }
-                                true
-                            }
-                            KeyCode::Char('e' | 'c' | 'a') => {
-                                self.begin_editing(idx);
-                                false
-                            }
-                            KeyCode::Char('i') => {
-                                self.text_input = take(&mut self.text_input)
-                                    .with_value(self.tasks[idx].title.clone())
-                                    .with_cursor(0);
-                                self.input_mode = InputMode::Text;
-                                false
-                            }
-                            KeyCode::Char('d') => {
-                                self.tasks.remove(idx);
-                                if self.tasks.is_empty() {
-                                    self.selection = None;
-                                } else {
-                                    self.selection = Some(idx.min(self.tasks.len() - 1));
-                                }
-                                true
-                            }
-                            KeyCode::Char('o') => {
-                                self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
-                                self.begin_editing(idx + 1);
-                                false
-                            }
-                            KeyCode::Char('s') => {
-                                self.selection = self.add_task(idx + 1, self.tasks[idx].indent + 1);
-                                self.begin_editing(idx + 1);
-                                false
-                            }
-                            _ => {
-                                false
-                            }
-                        },
-                        KeyModifiers::SHIFT => match key_event.code {
-                            // NOTE Chars must be uppercase
-                            KeyCode::Char('O') => {
-                                self.selection = self.add_task(idx, self.tasks[idx].indent);
-                                self.begin_editing(idx);
-                                false
-                            }
-                            _ => {
-                                false
-                            }
-                        }
-                        KeyModifiers::CONTROL => match key_event.code {
-                            KeyCode::Char('c' | 'd') => {
-                                return true;
-                            }
-                            KeyCode::Char('j') => {
-                                self.selection = Some(self.transpose_down(idx));
-                                true
-                            }
-                            KeyCode::Char('k') => {
-                                self.selection = Some(self.transpose_up(idx));
-                                true
-                            }
-                            KeyCode::Char('h') => {
-                                self.selection = Some(self.promote(idx));
-                                true
-                            }
-                            KeyCode::Char('l') =>
-                            {
-                                #[allow(clippy::collapsible_match)]
-                                if !self.is_first_child(idx) {
-                                    self.demote(idx);
-                                }
-                                true
-                            }
-                            _ => {
-                                false
-                            }
-                        },
-                        _ => {
-                            false
-                        }
-                    }
+        // Resolve action from the appropriate keymap
+        let action = match self.input_mode {
+            InputMode::Edit => self.config.text_keymap.dispatch(key_event),
+            InputMode::Normal => self.config.normal_keymap.dispatch(key_event),
+        }.copied()
+            .unwrap_or(Action::NoOp);
+
+        // Handle actions that don't require a selection
+        match action {
+            Action::Quit => {
+                if self.input_mode == InputMode::Edit {
+                    self.finish_editing();
                 }
-                else {
-                    false
-                }
+                return true;
             }
-            InputMode::Text => match key_event.code {
-                // Insert mode
-                KeyCode::Char('d') if key_event.modifiers == KeyModifiers::CONTROL => {
-                    return true;
+            Action::AddTop => {
+                self.tasks.insert(0, Task::default());
+                self.selection = Some(0);
+                self.text_input = Input::new("".to_string());
+                self.input_mode = InputMode::Edit;
+                self.state_changed = true;
+            }
+            _ => {}
+        }
+        // Handle actions that require a selection
+        if let Some(idx) = self.selection {
+            match action {
+                Action::Toggle => {
+                    self.toggle_completed(idx);
                 }
-                KeyCode::Char('c') if key_event.modifiers == KeyModifiers::CONTROL => {
-                    self.selection = self.finish_editing();
-                    true
-                }
-                KeyCode::Enter => {
-                    let add_another = !self.tasks[self.selection.unwrap()].title.is_empty();
-                    self.selection = self.finish_editing();
-                    if add_another {
-                        let idx = self.selection.unwrap();
-                        self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
-                        self.begin_editing(self.selection.unwrap());
+                Action::MoveDown => {
+                    self.selection = Some((idx + 1).min(self.tasks.len() - 1))
+                },
+                Action::MoveUp => {
+                    self.selection = Some(idx.saturating_sub(1))
+                },
+                Action::GoParent => {
+                    if let Some(p) = self.get_parent(idx) {
+                        self.selection = Some(p);
                     }
-                    true
                 }
-                KeyCode::Esc => {
-                    self.selection = self.finish_editing();
-                    true
+                Action::GoFirstChild => {
+                    if let Some(&c) = self.get_children(idx).first() {
+                        self.selection = Some(c);
+                    }
                 }
-                KeyCode::Tab => {
-                    self.tasks[self.selection.unwrap()].indent();
-                    true
+                Action::Promote => {
+                    self.selection = Some(self.promote(idx));
                 }
-                KeyCode::BackTab => {
-                    self.tasks[self.selection.unwrap()].dedent();
-                    true
+                Action::Demote => {
+                    self.demote(idx);
                 }
-                _ => {
+                Action::BeginEdit => {
+                    self.begin_editing(idx)
+                },
+                Action::EditDone => {
+                    self.finish_editing();
+                }
+                Action::AddAbove => {
+                    self.selection = self.add_task(idx, self.tasks[idx].indent);
+                    self.begin_editing(idx);
+                }
+                Action::AddBelow => {
+                    self.finish_editing();
+                    self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
+                    self.begin_editing(self.selection.unwrap());
+                }
+                Action::AddSubtask => {
+                    self.selection = self.add_task(idx + 1, self.tasks[idx].indent + 1);
+                    self.begin_editing(idx + 1);
+                }
+                Action::InsertAtCursor => {
+                    self.text_input = take(&mut self.text_input)
+                        .with_value(self.tasks[idx].title.clone())
+                        .with_cursor(0);
+                    self.input_mode = InputMode::Edit;
+                }
+                Action::Delete => {
+                    self.tasks.remove(idx);
+                    if self.tasks.is_empty() {
+                        self.selection = None;
+                    } else {
+                        self.selection = Some(idx.min(self.tasks.len() - 1));
+                    }
+                    self.state_changed = true;
+                }
+                Action::TransposeDown => {
+                    self.selection = Some(self.transpose_down(idx));
+                    self.state_changed = true;
+                }
+                Action::TransposeUp => {
+                    self.selection = Some(self.transpose_up(idx));
+                    self.state_changed = true;
+                }
+                Action::NoOp if self.input_mode == InputMode::Edit => {
+                    // Input text
                     self.text_input.handle_event(&Event::Key(key_event));
                     self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
-                    true
                 }
-            },
-        };
+                _ => {}
+            }
+        }
 
-        if self.input_mode == InputMode::Normal && state_changed {
+        // Save state if changed
+        if self.input_mode == InputMode::Normal && self.state_changed {
             self.save_todos();
+            self.state_changed = false;
         }
 
         false
@@ -530,7 +488,7 @@ impl Tui {
                         title = title.dim();
                     }
                     if self.selection == Some(i) {
-                        if let InputMode::Text = self.input_mode {
+                        if let InputMode::Edit = self.input_mode {
                             let cursor_x = area.x
                                 + (task.indent * self.config.render_indent) as u16
                                 + self.text_input.visual_cursor() as u16

@@ -577,6 +577,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "keybinds"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a039c6f55b34108f8ec8caa617cbaa17232ff08ccc9e3d656a41ec974e09d322"
+dependencies = [
+ "bitflags 2.13.0",
+ "crossterm",
+ "serde",
+ "smallvec",
+]
+
+[[package]]
 name = "lab"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1273,6 +1285,9 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "static_assertions"
@@ -1458,6 +1473,7 @@ name = "todo_tui"
 version = "0.1.0"
 dependencies = [
  "crossterm",
+ "keybinds",
  "ratatui",
  "serde",
  "toml",

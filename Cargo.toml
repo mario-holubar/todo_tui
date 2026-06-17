@@ -9,6 +9,7 @@ crossterm = "0.29"
 tui-input = "0.15.3"
 serde = { version = "1.0.228", default-features = false, features = ["derive", "alloc"] }
 toml = "1.1.2"
+keybinds = { version = "0.2.0", features = ["crossterm", "serde"] }
 
 [[bin]]
 name = "todo_tui"

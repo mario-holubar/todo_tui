@@ -1,20 +1,19 @@
-- [ ] input refactor
-    - [ ] keymap in config
-    - [ ] data-driven setup instead of giant match statement
-    - [ ] match modifiers before keycodes
-    - [ ] allow o/O without selection
 - [ ] take task functionality out of tui.rs
     - [ ] decide on flat or nested structure
         - [ ] tree or line based navigation?
     - [ ] task list struct
     - [ ] or revisit nested Task struct
 - [ ] small ux things
-    - [ ] alt for moving tasks
+    - [ ] take children into account for o/O, d
+    - [ ] clear text on c
     - [ ] p / P to paste deleted task
     - [ ] shift-i to insert
     - [ ] move selection down after completing task
     - [ ] unindent or delete children on task delete
     - [ ] arrow keys
+    - [ ] gg / G
+    - [ ] allow o/O without selection
+    - [ ] promote first / last sibling when moved
     - [ ] manual save
         - [ ] keybind
         - [ ] config option
@@ -24,7 +23,7 @@
 - [ ] get rid of ratatui
     - [ ] or get rid of crossterm dependency and use ratatui::crossterm instead
 - [ ] undo / redo
-    - [ ] diff based or just serialize entire file on each change?
+    - [ ] just serialize entire file on each change
 - [ ] load config file at runtime
     - [ ] partial config support
 - [ ] release
