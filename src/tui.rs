@@ -5,49 +5,54 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use slab_tree::NodeId;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
 use crate::config::Config;
 use crate::tasks::*;
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum InputMode {
-    #[default]
     Normal,
     Edit,
 }
 
+// TODO Need separate edit mode actions, or handle edit mode for all cases
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 pub enum Action {
     Quit,
-    AddTop,
     Toggle,
-    MoveDown,
+    SelectionUp,
+    SelectionDown,
+    SelectionPrev,
+    SelectionNext,
+    SelectionOut,
+    SelectionIn,
     MoveUp,
-    GoParent,
-    GoFirstChild,
-    Promote,
-    Demote,
-    BeginEdit,
-    InsertAtCursor,
+    MoveDown,
+    MovePrev,
+    MoveNext,
+    MoveOut,
+    MoveIn,
     Delete,
+    AddTop,
+    AddAbove,
     AddBelow,
     AddSubtask,
-    AddAbove,
-    TransposeDown,
-    TransposeUp,
+    Edit,
+    EditBeginning,
     EditDone,
     NoOp,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Tui {
     config: Config,
-    tasks: Vec<Task>,
-    selection: Option<usize>,
+    tasks: TaskTree,
+    selection: NodeId,
     text_input: Input,
     input_mode: InputMode,
-    state_changed: bool,
+    state_changed: bool, // TODO Does this need to be a field?
 }
 
 impl Tui {
@@ -61,262 +66,34 @@ impl Tui {
             Err(e) => panic!("Failed to read todo file: {e}"),
         };
         // Parse it into Tasks
-        let tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, config.file_indent)).collect();
+        let (tasks, selection) = TaskTree::from_string(&content, config.file_indent);
         // Verify with a round trip test
-        assert_eq!(content, serialize_tasks(&tasks, config.file_indent));
-
-        let selection = {
-            if tasks.is_empty() { None }
-            else { Some(0) }
-        };
+        assert_eq!(content, tasks.to_string(config.file_indent));
 
         Tui {
             config,
             tasks,
             selection,
-            ..Default::default()
+            text_input: Input::new(String::new()),
+            input_mode: InputMode::Normal,
+            state_changed: false,
         }
     }
 
     fn save_todos(&self) {
         // Serialize todos
-        let content = serialize_tasks(&self.tasks, self.config.file_indent);
+        let content = self.tasks.to_string(self.config.file_indent);
         // Verify with a round trip test
-        let reconstructed_tasks: Vec<Task> = content.lines().filter_map(|line| Task::from_str(line, self.config.file_indent)).collect();
-        assert_eq!(self.tasks, reconstructed_tasks);
+        let (reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
+        // TODO Equality of Trees is strict (includes IDs). Need to walk the trees to verify
+        //assert_eq!(content, reconstructed_tasks.to_string(self.config.file_indent));
         // Save to file
         fs::write(&self.config.todo_file, content).unwrap();
     }
 
-    fn get_parent(&self, idx: usize) -> Option<usize> {
-        if idx == 0 || self.tasks[idx].indent == 0 {
-            return None;
-        } else {
-            for i in (0..idx).rev() {
-                if self.tasks[i].indent == self.tasks[idx].indent - 1 {
-                    return Some(i);
-                }
-            }
-        }
-        None
-    }
-
-    fn get_children(&self, idx: usize) -> Vec<usize> {
-        let task = &self.tasks[idx];
-        let mut children = vec![];
-        for i in (idx + 1)..self.tasks.len() {
-            let t = &self.tasks[i];
-            if t.indent == task.indent + 1 {
-                children.push(i);
-            } else if t.indent <= task.indent {
-                break;
-            }
-        }
-        children
-    }
-
-    fn get_siblings(&self, idx: usize) -> Vec<usize> {
-        let task = &self.tasks[idx];
-        let mut siblings = vec![];
-        for i in (0..idx).rev() {
-            let t = &self.tasks[i];
-            if t.indent == task.indent {
-                siblings.push(i);
-            } else if t.indent <= task.indent {
-                break;
-            }
-        }
-        for i in (idx + 1)..(self.tasks.len() - 1) {
-            let t = &self.tasks[i];
-            if t.indent == task.indent {
-                siblings.push(i);
-            } else if t.indent <= task.indent {
-                break;
-            }
-        }
-        siblings
-    }
-
-    fn next_sibling(&self, idx: usize) -> Option<usize> {
-        let task = &self.tasks[idx];
-        for i in (idx + 1)..self.tasks.len() {
-            let t = &self.tasks[i];
-            if t.indent == task.indent {
-                return Some(i);
-            } else if t.indent <= task.indent {
-                break;
-            }
-        }
-        None
-    }
-
-    fn prev_sibling(&self, idx: usize) -> Option<usize> {
-        let task = &self.tasks[idx];
-        for i in (0..idx).rev() {
-            let t = &self.tasks[i];
-            if t.indent == task.indent {
-                return Some(i);
-            } else if t.indent <= task.indent {
-                break;
-            }
-        }
-        None
-    }
-
-    fn end_of_children(&self, idx: usize) -> usize {
-        if !self.has_children(idx) {
-            return idx;
-        };
-        self.end_of_children(*self.get_children(idx).last().unwrap())
-    }
-
-    fn has_children(&self, idx: usize) -> bool {
-        self.tasks.len() > idx + 1 && self.tasks[idx + 1].indent > self.tasks[idx].indent
-    }
-
-    fn is_first_child(&self, idx: usize) -> bool {
-        idx == 0 || self.tasks[idx - 1].indent < self.tasks[idx].indent
-    }
-
-    fn is_first_actionable(&self, idx: usize) -> bool {
-        if self.tasks[idx].indent == 0 {
-            return true;
-        }
-        let Some(parent) = self.get_parent(idx) else {
-            return true;
-        };
-        self.is_first_actionable(parent)
-            && !self
-                .get_siblings(idx)
-                .iter()
-                .any(|&i| i < idx && !self.tasks[i].completed)
-    }
-
-    fn update_parent_completion(&mut self, idx: usize) {
-        if !self.has_children(idx) {
-            return;
-        };
-        let completed = self
-            .get_children(idx)
-            .iter()
-            .all(|&i| self.tasks[i].completed);
-        if completed != self.tasks[idx].completed {
-            self.tasks[idx].completed = completed;
-            if let Some(parent) = self.get_parent(idx) {
-                self.update_parent_completion(parent);
-            }
-        }
-    }
-
-    fn set_children_completion(&mut self, idx: usize) {
-        self.get_children(idx).iter().for_each(|&i| {
-            self.tasks[i].completed = self.tasks[idx].completed;
-            self.set_children_completion(i);
-        });
-    }
-
-    fn toggle_completed(&mut self, idx: usize) {
-        self.tasks[idx].toggle_completed();
-        if let Some(parent) = self.get_parent(idx) {
-            self.update_parent_completion(parent);
-        }
-        self.set_children_completion(idx);
-        self.state_changed = true;
-    }
-
-    // Returns index of new task
-    fn add_task(&mut self, idx: usize, indent: usize) -> Option<usize> {
-        let new_task = Task {
-            indent,
-            ..Default::default()
-        };
-        self.tasks.insert(idx, new_task);
-        Some(idx)
-    }
-
-    // Returns new index of task
-    fn transpose_up(&mut self, idx: usize) -> usize {
-        let prev = match self.prev_sibling(idx) {
-            Some(i) => i,
-            None => return idx,
-        };
-        let end_of_prev = self.end_of_children(prev);
-        let end_of_task = self.end_of_children(idx);
-
-        // Swap the current task and its previous sibling (including children)
-        let size_of_prev = end_of_prev + 1 - prev;
-        let size_of_task = end_of_task + 1 - idx;
-        self.tasks[prev..=end_of_task].rotate_right(size_of_task);
-
-        idx - size_of_prev
-    }
-
-    // Returns new index of task
-    fn transpose_down(&mut self, idx: usize) -> usize {
-        let next = match self.next_sibling(idx) {
-            Some(i) => i,
-            None => return idx,
-        };
-        let end_of_task = self.end_of_children(idx);
-        let end_of_next = self.end_of_children(next);
-
-        // Swap the current task and its next sibling (including children)
-        let size_of_task = end_of_task + 1 - idx;
-        let size_of_next = end_of_next + 1 - next;
-        self.tasks[idx..=end_of_next].rotate_left(size_of_task);
-
-        idx + size_of_next
-    }
-
-    // Returns new index of task
-    fn promote(&mut self, mut idx: usize) -> usize {
-        if self.tasks[idx].indent == 0 {
-            return idx;
-        };
-
-        let parent = self.get_parent(idx);
-        let mut end_of_task = self.end_of_children(idx);
-
-        // Move task and children to after last sibling
-        if let Some(p) = parent {
-            let last_sibling = *self.get_children(p).last().unwrap();
-            let end_of_parent = self.end_of_children(last_sibling);
-            let size_of_task = end_of_task + 1 - idx;
-            self.tasks[idx..=end_of_parent].rotate_left(size_of_task);
-            idx += end_of_parent - end_of_task;
-            end_of_task = end_of_parent;
-        }
-
-        for i in idx..=end_of_task {
-            self.tasks[i].dedent()
-        }
-
-        if let Some(p) = parent {
-            self.update_parent_completion(p);
-        }
-
-        self.state_changed = true;
-
-        idx
-    }
-
-    fn demote(&mut self, idx: usize) {
-        if self.is_first_child(idx) {
-            return; // TODO Indicate that no change was made
-        }
-        self.get_children(idx).iter().for_each(|&i| self.demote(i));
-        self.tasks[idx].indent();
-
-        if let Some(p) = self.get_parent(idx) {
-            self.update_parent_completion(p);
-        }
-
-        self.state_changed = true;
-    }
-
-    fn begin_editing(&mut self, idx: usize) {
+    fn begin_editing(&mut self) {
         self.text_input = take(&mut self.text_input)
-            .with_value(self.tasks[idx].title.clone());
+            .with_value(self.tasks.get_task(self.selection).title.clone());
         self.input_mode = InputMode::Edit;
     }
 
@@ -324,21 +101,14 @@ impl Tui {
     fn finish_editing(&mut self) {
         if self.input_mode != InputMode::Edit { return; }
         self.input_mode = InputMode::Normal;
-        let idx = self.selection.unwrap();
-        let title = &mut self.tasks[idx].title;
-        *title = title.trim().to_string();
-        self.selection = if title.is_empty() {
-            self.tasks.remove(idx);
-            if self.tasks.is_empty() {
-                None
-            }
-            else {
-                Some(idx.saturating_sub(1))
-            }
+        let mut title = self.tasks.get_task(self.selection).title.clone();
+        title = title.trim().to_string();
+        if title.is_empty() {
+            self.selection = self.tasks.remove(self.selection);
         }
         else {
+            self.tasks.set_title(self.selection, title);
             self.state_changed = true;
-            Some(idx)
         };
     }
 
@@ -349,9 +119,8 @@ impl Tui {
             InputMode::Edit => self.config.text_keymap.dispatch(key_event),
             InputMode::Normal => self.config.normal_keymap.dispatch(key_event),
         }.copied()
-            .unwrap_or(Action::NoOp);
+        .unwrap_or(Action::NoOp);
 
-        // Handle actions that don't require a selection
         match action {
             Action::Quit => {
                 if self.input_mode == InputMode::Edit {
@@ -359,92 +128,108 @@ impl Tui {
                 }
                 return true;
             }
-            Action::AddTop => {
-                self.tasks.insert(0, Task::default());
-                self.selection = Some(0);
-                self.text_input = Input::new("".to_string());
-                self.input_mode = InputMode::Edit;
+            Action::Toggle => {
+                self.tasks.toggle_completed(self.selection);
                 self.state_changed = true;
             }
-            _ => {}
-        }
-        // Handle actions that require a selection
-        if let Some(idx) = self.selection {
-            match action {
-                Action::Toggle => {
-                    self.toggle_completed(idx);
+            Action::SelectionUp => {
+                if let Some(parent) = self.tasks.get_above(self.selection) {
+                    self.selection = parent;
                 }
-                Action::MoveDown => {
-                    self.selection = Some((idx + 1).min(self.tasks.len() - 1))
-                },
-                Action::MoveUp => {
-                    self.selection = Some(idx.saturating_sub(1))
-                },
-                Action::GoParent => {
-                    if let Some(p) = self.get_parent(idx) {
-                        self.selection = Some(p);
-                    }
+            },
+            Action::SelectionDown => {
+                if let Some(parent) = self.tasks.get_below(self.selection) {
+                    self.selection = parent;
                 }
-                Action::GoFirstChild => {
-                    if let Some(&c) = self.get_children(idx).first() {
-                        self.selection = Some(c);
-                    }
+            },
+            Action::SelectionPrev => {
+                if let Some(parent) = self.tasks.get_prev_sibling(self.selection) {
+                    self.selection = parent;
                 }
-                Action::Promote => {
-                    self.selection = Some(self.promote(idx));
+            },
+            Action::SelectionNext => {
+                if let Some(parent) = self.tasks.get_next_sibling(self.selection) {
+                    self.selection = parent;
                 }
-                Action::Demote => {
-                    self.demote(idx);
+            },
+            Action::SelectionIn => {
+                if let Some(child) = self.tasks.get_first_child(self.selection) {
+                    self.selection = child;
                 }
-                Action::BeginEdit => {
-                    self.begin_editing(idx)
-                },
-                Action::EditDone => {
-                    self.finish_editing();
-                }
-                Action::AddAbove => {
-                    self.selection = self.add_task(idx, self.tasks[idx].indent);
-                    self.begin_editing(idx);
-                }
-                Action::AddBelow => {
-                    self.finish_editing();
-                    self.selection = self.add_task(idx + 1, self.tasks[idx].indent);
-                    self.begin_editing(self.selection.unwrap());
-                }
-                Action::AddSubtask => {
-                    self.selection = self.add_task(idx + 1, self.tasks[idx].indent + 1);
-                    self.begin_editing(idx + 1);
-                }
-                Action::InsertAtCursor => {
-                    self.text_input = take(&mut self.text_input)
-                        .with_value(self.tasks[idx].title.clone())
-                        .with_cursor(0);
-                    self.input_mode = InputMode::Edit;
-                }
-                Action::Delete => {
-                    self.tasks.remove(idx);
-                    if self.tasks.is_empty() {
-                        self.selection = None;
-                    } else {
-                        self.selection = Some(idx.min(self.tasks.len() - 1));
-                    }
-                    self.state_changed = true;
-                }
-                Action::TransposeDown => {
-                    self.selection = Some(self.transpose_down(idx));
-                    self.state_changed = true;
-                }
-                Action::TransposeUp => {
-                    self.selection = Some(self.transpose_up(idx));
-                    self.state_changed = true;
-                }
-                Action::NoOp if self.input_mode == InputMode::Edit => {
-                    // Input text
-                    self.text_input.handle_event(&Event::Key(key_event));
-                    self.tasks[self.selection.unwrap()].title = self.text_input.value().to_string();
-                }
-                _ => {}
             }
+            Action::SelectionOut => {
+                if let Some(parent) = self.tasks.get_parent_non_root(self.selection) {
+                    self.selection = parent;
+                }
+            }
+            Action::MoveUp => {
+                todo!(); // TODO
+            }
+            Action::MoveDown => {
+                todo!(); // TODO
+            }
+            Action::MovePrev => {
+                if let Some(id) = self.tasks.switch_with_prev_sibling(self.selection) {
+                    self.selection = id;
+                }
+                self.state_changed = true;
+            }
+            Action::MoveNext => {
+                if let Some(id) = self.tasks.switch_with_next_sibling(self.selection) {
+                    self.selection = id;
+                }
+                self.state_changed = true;
+            }
+            Action::MoveOut => {
+                todo!();
+            }
+            Action::MoveIn => {
+                todo!();
+            }
+            Action::Edit => {
+                self.begin_editing()
+            },
+            Action::EditDone => {
+                self.finish_editing();
+            }
+            Action::AddTop => {
+                self.selection = self.tasks.add_top_level();
+                self.begin_editing();
+                self.state_changed = true;
+            }
+            Action::AddAbove => {
+                self.selection = self.tasks.add_sibling_above(self.selection);
+                self.begin_editing();
+                self.state_changed = true;
+            }
+            Action::AddBelow => {
+                self.selection = self.tasks.add_sibling_below(self.selection);
+                self.begin_editing();
+                self.state_changed = true;
+            }
+            Action::AddSubtask => {
+                self.selection = self.tasks.add_child(self.selection);
+                self.begin_editing();
+                self.state_changed = true;
+            }
+            Action::EditBeginning => {
+                self.text_input = take(&mut self.text_input)
+                    .with_value(self.tasks.get_task(self.selection).title.clone())
+                    .with_cursor(0);
+                self.input_mode = InputMode::Edit;
+            }
+            Action::Delete => {
+                self.selection = self.tasks.remove(self.selection);
+                self.state_changed = true;
+            }
+            Action::NoOp if self.input_mode == InputMode::Edit => {
+                // Input text
+                self.text_input.handle_event(&Event::Key(key_event));
+                let mut task = self.tasks.get_task(self.selection).clone();
+                task.title = self.text_input.value().to_string();
+                self.tasks.set_task(self.selection, task);
+            }
+            _ => {}
         }
 
         // Save state if changed
@@ -463,49 +248,17 @@ impl Tui {
         terminal.draw(|frame| {
             let area = frame.area();
 
-            // Render tasks
-            let task_lines: Vec<Line> = self
-                .tasks
-                .iter()
-                .enumerate()
-                .map(|(i, task)| {
-                    let mut marker = "◯".reset();
-                    let mut title = task.title.replace(" ", "\u{00A0}").reset(); // Non-breaking space so strikethrough applies
-                    let is_first_actionable = self.is_first_actionable(i);
+            // TODO This is a little convoluted
+            let lines = self.tasks.display(self.config.render_indent);
+            let selected_line = self.tasks.all_ids().into_iter().skip(1).position(|id| id == self.selection).unwrap();
+            let lines: Vec<Line> = lines.into_iter().enumerate().map(|(i, mut spans)| {
+                if i == selected_line {
+                    spans[3] = spans[3].clone().bg(Color::Rgb(56, 56, 64));
+                }
+                Line::from(spans)
+            }).collect();
 
-                    if task.completed {
-                        marker = "◉".fg(Color::DarkGray).dim();
-                        title = title.fg(Color::DarkGray).dim();
-                    } else if self.has_children(i) && is_first_actionable {
-                        //marker = "▷".dim();
-                        marker = marker.reset();
-                        title = title.reset();
-                    } else if is_first_actionable {
-                        marker = marker.green();
-                        title = title.green().bold();
-                    } else {
-                        marker = marker.dim();
-                        title = title.dim();
-                    }
-                    if self.selection == Some(i) {
-                        if let InputMode::Edit = self.input_mode {
-                            let cursor_x = area.x
-                                + (task.indent * self.config.render_indent) as u16
-                                + self.text_input.visual_cursor() as u16
-                                + 3;
-                            let cursor_y = area.y + i as u16 + 1;
-                            frame.set_cursor_position((cursor_x, cursor_y));
-                        } else {
-                            title = title.bg(Color::Rgb(56, 56, 64));
-                        }
-                    }
-
-                    let prefix = "\u{00A0}".repeat(task.indent * self.config.render_indent);
-                    Line::from(vec![prefix.dark_gray(), marker, Span::from(" "), title])
-                })
-                .collect();
-
-            let text = Text::from(task_lines);
+            let text = Text::from(lines);
             let paragraph = Paragraph::new(text).wrap(Wrap { trim: true }).block(
                 Block::default()
                     .borders(Borders::ALL)

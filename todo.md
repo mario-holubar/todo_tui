@@ -1,8 +1,11 @@
-- [ ] take task functionality out of tui.rs
-    - [ ] decide on flat or nested structure
-        - [ ] tree or line based navigation?
-    - [ ] task list struct
-    - [ ] or revisit nested Task struct
+- [x] take task functionality out of tui.rs
+    - [x] decide on flat or nested structure
+        - [x] tree or line based navigation?
+    - [x] task list struct
+    - [x] or revisit nested Task struct
+- [ ] rename render_indent to display_indent
+- [ ] Use ego_tree instead so I can move branches?
+- [ ] Implement above/below as line index to NodeId conversion
 - [ ] small ux things
     - [ ] take children into account for o/O, d
     - [ ] clear text on c

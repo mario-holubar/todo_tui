@@ -7,7 +7,7 @@ use crate::tui::Action;
 
 const DEFAULT_CONFIG: &str = include_str!("../default_config.toml");
 
-#[derive(Default, Debug, Deserialize)] // My new motto
+#[derive(Debug, Deserialize)] // My new motto
 pub struct Config {
     pub todo_file: String,
     pub file_indent: usize,
