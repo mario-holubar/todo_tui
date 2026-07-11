@@ -263,7 +263,7 @@ impl Tui {
     fn draw_list(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        let lines = self.tasks.display(self.config.render_indent);
+        let lines = self.tasks.display(self.config.display_indent);
         let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
         let list = List::new(items)
             .block(
