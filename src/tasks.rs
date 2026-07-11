@@ -1,5 +1,5 @@
 use ratatui::{prelude::*, text::Line};
-use slab_tree::{NodeId, NodeMut, NodeRef, RemoveBehavior::DropChildren, Tree};
+use ego_tree::{NodeId, NodeMut, NodeRef, Tree};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Task {
@@ -40,16 +40,14 @@ impl PartialEq for TaskTree {
 
 impl TaskTree {
     pub fn new() -> (TaskTree, NodeId) {
-        let mut tasks = Tree::new();
-        tasks.set_root(Task::default());
-        let selection = tasks.root_id().unwrap();
+        let tasks = Tree::new(Task::default());
+        let selection = tasks.root().id();
         (TaskTree { tasks }, selection)
     }
 
     pub fn from_string(string: &str, indent_width: usize) -> (TaskTree, NodeId) {
-        let mut tasks = Tree::new();
-        tasks.set_root(Task::default());
-        let root_id = tasks.root_id().unwrap();
+        let mut tasks = Tree::new(Task::default());
+        let root_id = tasks.root().id();
 
         // Stack of (parent_node_id, indent_level) to track hierarchy
         let mut parent_stack: Vec<(NodeId, i32)> = vec![(root_id, -1)];
@@ -73,21 +71,21 @@ impl TaskTree {
                 let parent_id = parent_stack.last().unwrap().0;
                 let mut parent_node = tasks.get_mut(parent_id).unwrap();
                 let child_node = parent_node.append(task);
-                let child_id = child_node.node_id();
+                let child_id = child_node.id();
 
                 parent_stack.push((child_id, indent));
             }
         }
 
-        let selection = tasks.root().unwrap().first_child().map(|first| first.node_id()).unwrap_or(root_id);
+        let selection = tasks.root().first_child().map(|first| first.id()).unwrap_or(root_id);
         (TaskTree { tasks }, selection)
     }
 
-    pub fn serialize_node(&self, lines: &mut Vec<String>, node: slab_tree::node::NodeRef<'_, Task>, indent_width: usize) {
+    pub fn serialize_node(&self, lines: &mut Vec<String>, node: NodeRef<'_, Task>, indent_width: usize) {
         let indent = node.ancestors().count() - 1;
         let prefix = " ".repeat(indent * indent_width);
-        let checkbox = if node.data().completed { "[x]" } else { "[ ]" };
-        let line = format!("{}- {} {}", prefix, checkbox, node.data().title);
+        let checkbox = if node.value().completed { "[x]" } else { "[ ]" };
+        let line = format!("{}- {} {}", prefix, checkbox, node.value().title);
         lines.push(line);
 
         for child in node.children() {
@@ -96,26 +94,23 @@ impl TaskTree {
     }
 
     pub fn to_string(&self, indent_width: usize) -> String {
-        let root_id = self.tasks.root_id().unwrap();
         let mut lines: Vec<String> = Vec::new();
 
-        if let Some(root) = self.tasks.get(root_id) {
-            for child in root.children() {
-                self.serialize_node(&mut lines, child, indent_width);
-            }
+        for child in self.tasks.root().children() {
+            self.serialize_node(&mut lines, child, indent_width);
         }
 
         lines.join("\n") + "\n"
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Line>, node: slab_tree::node::NodeRef<'_, Task>, indent_width: usize) {
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize) {
         let indent = node.ancestors().count() - 1;
-        let task = node.data();
-        let is_first_actionable = self.is_first_actionable(node.node_id());
+        let task = node.value();
+        let is_first_actionable = self.is_first_actionable(node.id());
 
         let prefix = "\u{00A0}".repeat(indent * indent_width);
-        let marker = if node.data().completed { "◉" } else { "◯" };
-        let title = &node.data().title;
+        let marker = if node.value().completed { "◉" } else { "◯" };
+        let title = &node.value().title;
 
         let mut style = Style::default();
         if task.completed {
@@ -137,18 +132,15 @@ impl TaskTree {
     }
 
     pub fn display(&self, indent_width: usize) -> Vec<Line<'_>> {
-        let root_id = self.tasks.root_id().unwrap();
         let mut lines: Vec<Line> = Vec::new();
-        if let Some(root) = self.tasks.get(root_id) {
-            for child in root.children() {
-                self.display_node(&mut lines, child, indent_width);
-            }
+        for child in self.tasks.root().children() {
+            self.display_node(&mut lines, child, indent_width);
         }
         lines
     }
 
     pub fn all_ids(&self) -> Vec<NodeId> {
-        self.tasks.root().unwrap().traverse_pre_order().skip(1).map(|node| node.node_id()).collect()
+        self.tasks.root().descendants().skip(1).map(|node| node.id()).collect()
     }
 
     fn get_node(&self, id: NodeId) -> NodeRef<'_, Task> {
@@ -160,67 +152,105 @@ impl TaskTree {
     }
 
     pub fn get_task(&self, id: NodeId) -> &Task {
-        self.get_node(id).data()
+        self.get_node(id).value()
     }
 
     pub fn set_task(&mut self, id: NodeId, task: Task) {
-        *self.get_node_mut(id).data() = task;
+        *self.get_node_mut(id).value() = task;
     }
 
     pub fn get_parent_non_root(&self, id: NodeId) -> Option<NodeId> {
         if self.is_top_level(id) { None }
-        else { Some(self.get_node(id).parent().unwrap().node_id()) }
+        else { Some(self.get_node(id).parent().unwrap().id()) }
     }
 
     pub fn get_first_child(&self, id: NodeId) -> Option<NodeId> {
-        self.get_node(id).first_child().map(|child| child.node_id())
+        self.get_node(id).first_child().map(|child| child.id())
     }
 
     pub fn get_prev_sibling(&self, id: NodeId) -> Option<NodeId> {
-        self.get_node(id).prev_sibling().map(|sib| sib.node_id())
+        self.get_node(id).prev_sibling().map(|sib| sib.id())
     }
 
     pub fn get_next_sibling(&self, id: NodeId) -> Option<NodeId> {
-        self.get_node(id).next_sibling().map(|sib| sib.node_id())
+        self.get_node(id).next_sibling().map(|sib| sib.id())
     }
 
     pub fn get_above(&self, id: NodeId) -> Option<NodeId> {
         let node = self.get_node(id);
         if let Some(sibling) = node.prev_sibling() {
-            if let Some(descendant) = sibling.traverse_pre_order().last() { Some(descendant.node_id()) }
-            else { Some(sibling.node_id()) }
+            let descendants: Vec<NodeId> = sibling.descendants().map(|n| n.id()).collect();
+            if let Some(last_descendant) = descendants.last() { Some(*last_descendant) }
+            else { Some(sibling.id()) }
         }
         else { self.get_parent_non_root(id) }
     }
 
     pub fn get_below(&self, id: NodeId) -> Option<NodeId> {
         let node = self.get_node(id);
-        if let Some(child) = node.first_child() { Some(child.node_id()) }
-        else if let Some(sibling) = node.next_sibling() { Some(sibling.node_id()) }
+        if let Some(child) = node.first_child() { Some(child.id()) }
+        else if let Some(sibling) = node.next_sibling() { Some(sibling.id()) }
         // TODO Keep walking up ancestors
-        else { node.parent().unwrap().next_sibling().map(|pibling| pibling.node_id()) }
+        else { node.parent().unwrap().next_sibling().map(|pibling| pibling.id()) }
     }
 
     pub fn switch_with_prev_sibling(&mut self, id: NodeId) -> Option<NodeId> {
-        if self.get_node_mut(id).swap_prev_sibling() { Some(id) }
-        else { None }
+        let prev_id = self.get_node(id).prev_sibling().map(|sib| sib.id());
+        match prev_id {
+            Some(prev_id) => {
+                self.swap_siblings(id, prev_id);
+                Some(id)
+            }
+            None => None,
+        }
     }
 
     pub fn switch_with_next_sibling(&mut self, id: NodeId) -> Option<NodeId> {
-        if self.get_node_mut(id).swap_next_sibling() { Some(id) }
-        else { None }
+        let next_id = self.get_node(id).next_sibling().map(|sib| sib.id());
+        match next_id {
+            Some(next_id) => {
+                self.swap_siblings(id, next_id);
+                Some(id)
+            }
+            None => None,
+        }
+    }
+
+    fn swap_siblings(&mut self, id1: NodeId, id2: NodeId) {
+        let parent_id = self.get_node(id1).parent().unwrap().id();
+        // Collect sibling chain to rebuild order
+        let siblings: Vec<NodeId> = self.get_node(parent_id)
+            .children()
+            .map(|sib| sib.id())
+            .collect();
+        let mut new_order = Vec::new();
+        for &sid in &siblings {
+            if sid == id1 {
+                new_order.push(id2);
+            } else if sid == id2 {
+                new_order.push(id1);
+            } else {
+                new_order.push(sid);
+            }
+        }
+        // Reattach in new order
+        for &sid in &new_order {
+            let mut node = self.get_node_mut(sid);
+            node.detach();
+            self.get_node_mut(parent_id).append_id(sid);
+        }
     }
 
     fn is_root(&self, id: NodeId) -> bool {
-        id == self.tasks.root_id().unwrap()
+        id == self.tasks.root().id()
     }
 
     fn is_top_level(&self, id: NodeId) -> bool {
-        self.get_node(id).parent().unwrap().node_id() == self.tasks.root_id().unwrap()
+        self.get_node(id).parent().unwrap().id() == self.tasks.root().id()
     }
 
     pub fn has_children(&self, id: NodeId) -> bool {
-        self.get_node(id).first_child().is_some()
+        self.get_node(id).has_children()
     }
 
     fn is_first_actionable(&self, id: NodeId) -> bool {
@@ -236,77 +266,85 @@ impl TaskTree {
 
         // If id is done, it's not actionable
         let node = self.get_node(id);
-        if node.data().completed { return false; }
+        if node.value().completed { return false; }
 
         // If any previous sibling not done, then id is not first actionable
         for sib in node.parent().unwrap().children() {
-            if sib.node_id() == id { break; }
-            if !sib.data().completed { return false; }
+            if sib.id() == id { break; }
+            if !sib.value().completed { return false; }
         }
         true
     }
 
     pub fn add_top_level(&mut self) -> NodeId {
         let task = Task::default();
-        self.tasks.root_mut().unwrap().prepend(task).node_id()
+        self.tasks.root_mut().prepend(task).id()
     }
 
     pub fn add_sibling_below(&mut self, id: NodeId) -> NodeId {
         // Create sibling node
         let task = Task::default();
-        let parent = self.get_node(id).parent().unwrap().node_id();
-        let added_id = self.get_node_mut(parent).append(task).as_ref().node_id();
+        let parent = self.get_node(id).parent().unwrap().id();
+        let added_id = self.get_node_mut(parent).append(task).id();
 
         // Move it to under id
         while let Some(above) = self.get_node(added_id).prev_sibling() {
-            if above.node_id() == id {
+            if above.id() == id {
                 break;
             }
-            self.get_node_mut(added_id).swap_prev_sibling();
+            self.swap_siblings(added_id, above.id());
         }
         added_id
     }
 
     pub fn add_sibling_above(&mut self, id: NodeId) -> NodeId {
         let added_id = self.add_sibling_below(id);
-        self.get_node_mut(added_id).swap_prev_sibling();
+        if self.get_node(added_id).prev_sibling().is_some() {
+            let prev_id = self.get_node(added_id).prev_sibling().unwrap().id();
+            self.swap_siblings(added_id, prev_id);
+        }
         added_id
     }
 
     pub fn add_child(&mut self, id: NodeId) -> NodeId {
         let task = Task::default();
-        self.get_node_mut(id).prepend(task).node_id()
+        self.get_node_mut(id).prepend(task).id()
     }
 
     pub fn remove(&mut self, id: NodeId) -> NodeId {
         if self.is_root(id) { return id; }
         let node = self.get_node(id);
-        let next_selected = node.prev_sibling().unwrap_or(
-            node.next_sibling().unwrap_or(
-                node.parent().unwrap()
+        let next_selected = node.prev_sibling().map(|n| n.id()).unwrap_or(
+            node.next_sibling().map(|n| n.id()).unwrap_or(
+                node.parent().unwrap().id()
             )
-        ).node_id();
-        self.tasks.remove(id, DropChildren).unwrap();
+        );
+        // Detach all descendants, then detach the node itself
+        let descendant_ids: Vec<NodeId> = node.descendants().skip(1).map(|n| n.id()).collect();
+        for desc_id in descendant_ids.iter().rev() {
+            self.get_node_mut(*desc_id).detach();
+        }
+        self.get_node_mut(id).detach();
         next_selected
     }
 
     fn set_descendants_completion(&mut self, id: NodeId) {
         let node = self.get_node(id);
-        let completed = node.data().completed;
-        let descendants: Vec<NodeId> = node.traverse_pre_order().map(|node| node.node_id()).collect();
+        let completed = node.value().completed;
+        let descendants: Vec<NodeId> = node.descendants().skip(1).map(|node| node.id()).collect();
         for id in descendants {
-            self.get_node_mut(id).data().completed = completed;
+            self.get_node_mut(id).value().completed = completed;
         }
     }
 
     fn update_ancestors_completion(&mut self, id: NodeId) {
         let node = self.get_node(id);
-        let ancestors: Vec<NodeId> = node.ancestors().map(|node| node.node_id()).collect();
+        let ancestors: Vec<NodeId> = node.ancestors().map(|node| node.id()).collect();
         for id in ancestors {
             let all_children_completed = self.get_node(id)
                 .children()
-                .all(|child| child.data().completed);
-            self.get_node_mut(id).data().completed = all_children_completed;
+                .all(|child| child.value().completed);
+            self.get_node_mut(id).value().completed = all_children_completed;
         }
     }
 
@@ -314,7 +352,7 @@ impl TaskTree {
         if self.is_root(id) { return; }
         // Toggle id
         let mut node = self.get_node_mut(id);
-        node.data().completed = !node.data().completed;
+        node.value().completed = !node.value().completed;
         // Update descendants
         self.set_descendants_completion(id);
         // Update ancestors
@@ -323,6 +361,6 @@ impl TaskTree {
 
     pub fn set_title(&mut self, id: NodeId, title: String) {
         if self.is_root(id) { return; }
-        self.get_node_mut(id).data().title = title;
+        self.get_node_mut(id).value().title = title;
     }
 }

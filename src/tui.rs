@@ -6,7 +6,7 @@ use ratatui::{
 
     widgets::{Block, Borders, List, ListItem, ListState},
 };
-use slab_tree::NodeId;
+use ego_tree::NodeId;
 use tui_input::{backend::crossterm::EventHandler, Input};
 
 use crate::config::Config;
