@@ -1,4 +1,4 @@
-use ratatui::{style::Stylize, text::{Line, Span}};
+use ratatui::{prelude::*, text::Line};
 use slab_tree::{NodeId, NodeMut, NodeRef, RemoveBehavior::DropChildren, Tree};
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -108,45 +108,37 @@ impl TaskTree {
         lines.join("\n") + "\n"
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Vec<Span>>, node: slab_tree::node::NodeRef<'_, Task>, indent_width: usize) {
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: slab_tree::node::NodeRef<'_, Task>, indent_width: usize) {
         let indent = node.ancestors().count() - 1;
         let task = node.data();
         let is_first_actionable = self.is_first_actionable(node.node_id());
 
-        let prefix = "\u{00A0}".repeat(indent * indent_width).reset();
-        let mut marker = (if node.data().completed { "◉" } else { "◯" }).reset();
-        let mut title = node.data().title.clone().reset();
+        let prefix = "\u{00A0}".repeat(indent * indent_width);
+        let marker = if node.data().completed { "◉" } else { "◯" };
+        let title = &node.data().title;
 
+        let mut style = Style::default();
         if task.completed {
-            marker = "◉".dark_gray().dim();
-            title = title.dark_gray().dim();
+            style = style.dark_gray().dim();
         } else if node.first_child().is_some() && is_first_actionable {
-            marker = marker.reset();
-            title = title.reset();
+            // default style, no change needed
         } else if is_first_actionable {
-            marker = marker.green();
-            title = title.green().bold();
+            style = style.green().bold();
         } else {
-            marker = marker.dim();
-            title = title.dim();
+            style = style.dim();
         }
 
-        let spans = vec![
-            prefix,
-            marker,
-            " ".reset(),
-            title,
-        ];
-        lines.push(spans);
+        let line = Line::from(format!("{}{} {}", prefix, marker, title)).patch_style(style);
+        lines.push(line);
 
         for child in node.children() {
             self.display_node(lines, child, indent_width);
         }
     }
 
-    pub fn display(&self, indent_width: usize) -> Vec<Vec<Span>> {
+    pub fn display(&self, indent_width: usize) -> Vec<Line<'_>> {
         let root_id = self.tasks.root_id().unwrap();
-        let mut lines: Vec<Vec<Span>> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
         if let Some(root) = self.tasks.get(root_id) {
             for child in root.children() {
                 self.display_node(&mut lines, child, indent_width);
@@ -156,14 +148,14 @@ impl TaskTree {
     }
 
     pub fn all_ids(&self) -> Vec<NodeId> {
-        self.tasks.root().unwrap().traverse_pre_order().map(|node| node.node_id()).collect()
+        self.tasks.root().unwrap().traverse_pre_order().skip(1).map(|node| node.node_id()).collect()
     }
 
-    fn get_node(&self, id: NodeId) -> NodeRef<Task> {
+    fn get_node(&self, id: NodeId) -> NodeRef<'_, Task> {
         self.tasks.get(id).unwrap()
     }
 
-    fn get_node_mut(&mut self, id: NodeId) -> NodeMut<Task> {
+    fn get_node_mut(&mut self, id: NodeId) -> NodeMut<'_, Task> {
         self.tasks.get_mut(id).unwrap()
     }
 

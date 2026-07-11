@@ -1,9 +1,10 @@
-use std::{error::Error, fs, io::Stdout, mem::take};
+use std::{error::Error, fs, mem::take};
 
 use crossterm::event::{self, Event, KeyEvent};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Paragraph, Wrap},
+
+    widgets::{Block, Borders, List, ListItem, ListState},
 };
 use slab_tree::NodeId;
 use tui_input::{backend::crossterm::EventHandler, Input};
@@ -52,7 +53,9 @@ pub struct Tui {
     selection: NodeId,
     text_input: Input,
     input_mode: InputMode,
-    state_changed: bool, // TODO Does this need to be a field?
+    state_changed: bool,
+    list_state: ListState,
+    // TODO Does state_changed need to be a field?
 }
 
 impl Tui {
@@ -70,6 +73,7 @@ impl Tui {
         // Verify with a round trip test
         assert_eq!(content, tasks.to_string(config.file_indent));
 
+        let list_state = ListState::default().with_selected(Some(0));
         Tui {
             config,
             tasks,
@@ -77,6 +81,7 @@ impl Tui {
             text_input: Input::new(String::new()),
             input_mode: InputMode::Normal,
             state_changed: false,
+            list_state,
         }
     }
 
@@ -84,7 +89,7 @@ impl Tui {
         // Serialize todos
         let content = self.tasks.to_string(self.config.file_indent);
         // Verify with a round trip test
-        let (reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
+        let (_reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
         // TODO Equality of Trees is strict (includes IDs). Need to walk the trees to verify
         //assert_eq!(content, reconstructed_tasks.to_string(self.config.file_indent));
         // Save to file
@@ -241,37 +246,36 @@ impl Tui {
         false
     }
 
-    fn draw(
-        &self,
-        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    ) -> Result<(), Box<dyn Error>> {
-        terminal.draw(|frame| {
-            let area = frame.area();
+    fn sync_selection(&mut self) {
+        let all_ids = self.tasks.all_ids();
+        let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
+        if self.list_state.selected() != Some(selected_idx) {
+            self.list_state.select(Some(selected_idx));
+        }
+    }
 
-            // TODO This is a little convoluted
-            let lines = self.tasks.display(self.config.render_indent);
-            let selected_line = self.tasks.all_ids().into_iter().skip(1).position(|id| id == self.selection).unwrap();
-            let lines: Vec<Line> = lines.into_iter().enumerate().map(|(i, mut spans)| {
-                if i == selected_line {
-                    spans[3] = spans[3].clone().bg(Color::Rgb(56, 56, 64));
-                }
-                Line::from(spans)
-            }).collect();
+    fn draw_list(&mut self, frame: &mut Frame) {
+        let area = frame.area();
 
-            let text = Text::from(lines);
-            let paragraph = Paragraph::new(text).wrap(Wrap { trim: true }).block(
+        let lines = self.tasks.display(self.config.render_indent);
+        let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
+        let list = List::new(items)
+            .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" {} ", self.config.todo_file)),
-            );
-            frame.render_widget(paragraph, area);
-        })?;
-        Ok(())
+            )
+            .highlight_symbol("> ")
+            .highlight_style(Style::default().bg(Color::Rgb(56, 56, 64)));
+
+        frame.render_stateful_widget(list, area, &mut self.list_state);
     }
 
     pub fn main(&mut self) -> Result<(), Box<dyn Error>> {
         ratatui::run(|terminal| {
-            self.draw(terminal)?;
+            self.sync_selection();
+            terminal.draw(|frame| self.draw_list(frame))?;
+
             loop {
                 if event::poll(std::time::Duration::MAX)? {
                     let event = event::read()?;
@@ -281,7 +285,8 @@ impl Tui {
                         }
                     }
                 }
-                self.draw(terminal)?;
+                self.sync_selection();
+                terminal.draw(|frame| self.draw_list(frame))?;
             }
             Ok(())
         })
