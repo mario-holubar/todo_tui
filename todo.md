@@ -9,8 +9,7 @@
 - [x] get rid of ratatui
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
 - [ ] small ux things
-    - [ ] take children into account for o/O, d
-    - [ ] clear text on c
+    - [x] clear text on c
     - [ ] p / P to paste deleted task
     - [ ] shift-i to insert
     - [ ] move selection down after completing task

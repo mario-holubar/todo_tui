@@ -35,11 +35,12 @@ display_indent = 2     # Number of spaces per indent to render in the app
 "o" = "AddBelow"
 "s" = "AddSubtask"
 "e" = "Edit"
-"c" = "Edit"
 "a" = "Edit"
 "A" = "Edit"
 "i" = "EditBeginning"
 "I" = "EditBeginning"
+"c" = "EditClear"
+"C" = "EditClear"
 
 [text_keymap]
 "Ctrl+d" = "Quit"

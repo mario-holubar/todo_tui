@@ -45,6 +45,7 @@ pub enum Action {
     AddSubtask,
     Edit,
     EditBeginning,
+    EditClear,
     EditDone,
     NoOp,
 }
@@ -203,6 +204,16 @@ impl Tui {
             Action::Edit => {
                 self.begin_editing()
             },
+            Action::EditBeginning => {
+                self.text_input = take(&mut self.text_input)
+                    .with_value(self.tasks.get_task(self.selection).title.clone())
+                    .with_cursor(0);
+                self.input_mode = InputMode::Edit;
+            }
+            Action::EditClear => {
+                self.tasks.set_title(self.selection, String::new());
+                self.begin_editing()
+            }
             Action::EditDone => {
                 self.finish_editing();
             }
@@ -226,12 +237,6 @@ impl Tui {
                 self.begin_editing();
                 self.state_changed = true;
             }
-            Action::EditBeginning => {
-                self.text_input = take(&mut self.text_input)
-                    .with_value(self.tasks.get_task(self.selection).title.clone())
-                    .with_cursor(0);
-                self.input_mode = InputMode::Edit;
-            }
             Action::Delete => {
                 self.selection = self.tasks.remove(self.selection);
                 self.state_changed = true;
@@ -243,7 +248,7 @@ impl Tui {
                 task.title = self.text_input.value().to_string();
                 self.tasks.set_task(self.selection, task);
             }
-            _ => {}
+            Action::NoOp => {}
         }
 
         // Save state if changed
