@@ -186,10 +186,16 @@ impl Tui {
                 self.state_changed = true;
             }
             Action::MoveOut => {
-                todo!();
+                if let Some(id) = self.tasks.move_out(self.selection) {
+                    self.selection = id;
+                }
+                self.state_changed = true;
             }
             Action::MoveIn => {
-                todo!();
+                if let Some(id) = self.tasks.move_in(self.selection) {
+                    self.selection = id;
+                }
+                self.state_changed = true;
             }
             Action::Edit => {
                 self.begin_editing()

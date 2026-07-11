@@ -3,9 +3,10 @@
         - [x] tree or line based navigation?
     - [x] task list struct
     - [x] or revisit nested Task struct
+- [x] Use ego_tree instead so I can move branches
+- [ ] show cursor in edit mode
+- [ ] implement above/below as line index to NodeId conversion
 - [ ] rename render_indent to display_indent
-- [ ] Use ego_tree instead so I can move branches?
-- [ ] Implement above/below as line index to NodeId conversion
 - [ ] small ux things
     - [ ] take children into account for o/O, d
     - [ ] clear text on c

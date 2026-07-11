@@ -253,6 +253,38 @@ impl TaskTree {
         self.get_node(id).has_children()
     }
 
+    pub fn move_out(&mut self, id: NodeId) -> Option<NodeId> {
+        if self.is_root(id) || self.is_top_level(id) { return None; }
+        let parent_id = self.get_node(id).parent().unwrap().id();
+        // Detach the node from its current parent
+        self.get_node_mut(id).detach();
+        // Append it as a child of the grandparent (i.e. sibling of old parent)
+        let grandparent_id = self.get_node(parent_id).parent().unwrap().id();
+        self.get_node_mut(grandparent_id).append_id(id);
+        // Move it to after the old parent
+        while let Some(prev) = self.get_node(id).prev_sibling() {
+            if prev.id() == parent_id { break; }
+            self.swap_siblings(id, prev.id());
+        }
+        Some(id)
+    }
+
+    pub fn move_in(&mut self, id: NodeId) -> Option<NodeId> {
+        if self.is_root(id) { return None; }
+        let prev_sibling = self.get_node(id).prev_sibling();
+        let target_parent = prev_sibling.map(|s| s.id())
+            .or_else(|| self.get_parent_non_root(id));
+        let target_parent = match target_parent {
+            Some(p) => p,
+            None => return None, // top-level with no previous sibling
+        };
+        // Detach the node from its current parent
+        self.get_node_mut(id).detach();
+        // Append as last child of target parent
+        self.get_node_mut(target_parent).append_id(id);
+        Some(id)
+    }
+
     fn is_first_actionable(&self, id: NodeId) -> bool {
         // All top level tasks are actionable
         let Some(parent) = self.get_parent_non_root(id) else {
