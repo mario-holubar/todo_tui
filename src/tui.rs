@@ -1,6 +1,10 @@
 use std::{error::Error, fs, mem::take};
 
-use crossterm::event::{self, Event, KeyEvent};
+use crossterm::{
+    cursor::MoveTo,
+    event::{self, Event, KeyEvent},
+    execute,
+};
 use ratatui::{
     prelude::*,
 
@@ -252,6 +256,19 @@ impl Tui {
         false
     }
 
+    fn cursor_position(&self) -> (u16, u16) {
+        let all_ids = self.tasks.all_ids();
+        let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
+        // Row: 1 (title bar / top border) + selected task index
+        let row = 1 + selected_idx as u16;
+        // Column: 1 (left border) + 2 ("> ") + indent prefix + 1 (marker) + 1 (space after marker)
+        let node = self.tasks.get_node(self.selection);
+        let indent = node.ancestors().count() - 1;
+        let col: u16 = (1 + 2 + indent * self.config.display_indent + 1 + 1
+            + self.text_input.cursor()) as u16;
+        (col, row)
+    }
+
     fn sync_selection(&mut self) {
         let all_ids = self.tasks.all_ids();
         let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
@@ -293,6 +310,15 @@ impl Tui {
                 }
                 self.sync_selection();
                 terminal.draw(|frame| self.draw_list(frame))?;
+
+                if self.input_mode == InputMode::Edit {
+                    let (col, row) = self.cursor_position();
+                    use std::io::stdout;
+                    execute!(stdout(), MoveTo(col, row))?;
+                    terminal.show_cursor()?;
+                } else {
+                    terminal.hide_cursor()?;
+                }
             }
             Ok(())
         })

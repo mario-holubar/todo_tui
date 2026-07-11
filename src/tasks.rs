@@ -143,7 +143,7 @@ impl TaskTree {
         self.tasks.root().descendants().skip(1).map(|node| node.id()).collect()
     }
 
-    fn get_node(&self, id: NodeId) -> NodeRef<'_, Task> {
+    pub fn get_node(&self, id: NodeId) -> NodeRef<'_, Task> {
         self.tasks.get(id).unwrap()
     }
 

@@ -5,7 +5,7 @@
     - [x] or revisit nested Task struct
 - [x] Use ego_tree instead so I can move branches
 - [x] rename render_indent to display_indent
-- [ ] show cursor in edit mode
+- [x] show cursor in edit mode
 - [ ] implement above/below as line index to NodeId conversion
 - [ ] small ux things
     - [ ] take children into account for o/O, d
