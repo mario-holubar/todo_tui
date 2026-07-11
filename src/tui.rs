@@ -1,13 +1,12 @@
 use std::{error::Error, fs, mem::take};
 
-use crossterm::{
-    cursor::MoveTo,
-    event::{self, Event, KeyEvent},
-    execute,
-};
 use ratatui::{
     prelude::*,
-
+    crossterm::{
+        cursor::MoveTo,
+        event::{self, Event, KeyEvent},
+        execute,
+    },
     widgets::{Block, Borders, List, ListItem, ListState},
 };
 use ego_tree::NodeId;

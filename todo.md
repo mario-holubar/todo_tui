@@ -6,7 +6,8 @@
 - [x] Use ego_tree instead so I can move branches
 - [x] rename render_indent to display_indent
 - [x] show cursor in edit mode
-- [ ] implement above/below as line index to NodeId conversion
+- [x] get rid of ratatui
+    - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
 - [ ] small ux things
     - [ ] take children into account for o/O, d
     - [ ] clear text on c
@@ -24,8 +25,7 @@
         - [ ] ui indicator
         - [ ] quit confirmation
 - [ ] headers as tabs
-- [ ] get rid of ratatui
-    - [ ] or get rid of crossterm dependency and use ratatui::crossterm instead
+- [ ] implement above/below as line index to NodeId conversion
 - [ ] undo / redo
     - [ ] just serialize entire file on each change
 - [ ] load config file at runtime
