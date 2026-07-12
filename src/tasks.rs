@@ -103,6 +103,52 @@ impl TaskTree {
         lines.join("\n") + "\n"
     }
 
+    fn insert_branch_at_sibling(&mut self, target_id: NodeId, branch_content: &str, after: bool) -> NodeId {
+        let (branch_tree, _) = Self::from_string(branch_content, 4);
+        let parent_id = self.get_node(target_id).parent().unwrap().id();
+
+        let mut first_pasted_id = target_id;
+
+        for branch_child in branch_tree.tasks.root().children() {
+            let new_id = self.clone_subtree(&branch_tree, branch_child, parent_id);
+            if first_pasted_id == target_id {
+                first_pasted_id = new_id;
+            }
+
+            // Position: if `after`, move after target; otherwise move before target
+            while let Some(next) = self.get_node(new_id).next_sibling() {
+                if next.id() == target_id {
+                    if after {
+                        self.swap_siblings(new_id, next.id());
+                    }
+                    break;
+                }
+                self.swap_siblings(new_id, next.id());
+            }
+        }
+
+        first_pasted_id
+    }
+
+    fn clone_subtree(&mut self, source: &TaskTree, node: NodeRef<'_, Task>, parent_id: NodeId) -> NodeId {
+        let task = (*node.value()).clone();
+        let new_id = self.get_node_mut(parent_id).prepend(task).id();
+
+        for child in node.children() {
+            self.clone_subtree(source, child, new_id);
+        }
+
+        new_id
+    }
+
+    pub fn paste_branch_below(&mut self, id: NodeId, content: &str) -> NodeId {
+        self.insert_branch_at_sibling(id, content, true)
+    }
+
+    pub fn paste_branch_above(&mut self, id: NodeId, content: &str) -> NodeId {
+        self.insert_branch_at_sibling(id, content, false)
+    }
+
     pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize) {
         let indent = node.ancestors().count() - 1;
         let task = node.value();

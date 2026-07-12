@@ -10,7 +10,8 @@
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
 - [ ] small ux things
     - [x] clear text on c
-    - [ ] p / P to paste deleted task
+    - [x] p / P to paste deleted task
+    - [x] y to yank
     - [ ] shift-i to insert
     - [ ] move selection down after completing task
     - [ ] unindent or delete children on task delete

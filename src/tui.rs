@@ -39,6 +39,9 @@ pub enum Action {
     MoveOut,
     MoveIn,
     Delete,
+    Copy,
+    PasteBelow,
+    PasteAbove,
     AddTop,
     AddAbove,
     AddBelow,
@@ -56,6 +59,7 @@ pub struct Tui {
     tasks: TaskTree,
     selection: NodeId,
     text_input: Input,
+    clipboard: Option<String>,
     input_mode: InputMode,
     state_changed: bool,
 }
@@ -67,7 +71,7 @@ impl Tui {
         // Read the todo file
         let content = match fs::read_to_string(&config.todo_file) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "".to_string(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "\n".to_string(),
             Err(e) => panic!("Failed to read todo file: {e}"),
         };
         // Parse it into Tasks
@@ -80,6 +84,7 @@ impl Tui {
             tasks,
             selection,
             text_input: Input::new(String::new()),
+            clipboard: None,
             input_mode: InputMode::Normal,
             state_changed: false,
         }
@@ -94,6 +99,12 @@ impl Tui {
         //assert_eq!(content, reconstructed_tasks.to_string(self.config.file_indent));
         // Save to file
         fs::write(&self.config.todo_file, content).unwrap();
+    }
+
+    fn copy_selection_to_clipboard(&mut self) {
+        let mut lines = Vec::new();
+        self.tasks.serialize_node(&mut lines, self.tasks.get_node(self.selection), self.config.file_indent);
+        self.clipboard = Some(lines.join("\n") + "\n");
     }
 
     fn begin_editing(&mut self) {
@@ -234,8 +245,24 @@ impl Tui {
                 self.state_changed = true;
             }
             Action::Delete => {
+                self.copy_selection_to_clipboard();
                 self.selection = self.tasks.remove(self.selection);
                 self.state_changed = true;
+            }
+            Action::Copy => {
+                self.copy_selection_to_clipboard();
+            }
+            Action::PasteBelow => {
+                if let Some(ref content) = self.clipboard {
+                    self.selection = self.tasks.paste_branch_below(self.selection, content);
+                    self.state_changed = true;
+                }
+            }
+            Action::PasteAbove => {
+                if let Some(ref content) = self.clipboard {
+                    self.selection = self.tasks.paste_branch_above(self.selection, content);
+                    self.state_changed = true;
+                }
             }
             Action::NoOp if self.input_mode == InputMode::Edit => {
                 // Input text
