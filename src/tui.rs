@@ -50,6 +50,8 @@ pub enum Action {
     EditBeginning,
     EditClear,
     EditDone,
+    SetStartDate,
+    SetDueDate,
     Undo,
     Redo,
     NoOp,
@@ -121,6 +123,12 @@ impl Tui {
             self.tasks.set_title(self.selection, title);
             self.state_changed = true;
         };
+    }
+
+    fn open_date_picker(&mut self, is_start_date: bool) {
+        let label = if is_start_date { "Start date" } else { "Due date" };
+        println!("Opening {} picker for task: {}", label, self.tasks.get_task(self.selection).title);
+        // TODO: Implement date picker overlay using ratatui_widgets::calendar::Monthly
     }
 
     // Process input. Returns true if the loop should exit.
@@ -220,6 +228,12 @@ impl Tui {
             }
             Action::EditDone => {
                 self.finish_editing();
+            }
+            Action::SetStartDate => {
+                self.open_date_picker(true);
+            }
+            Action::SetDueDate => {
+                self.open_date_picker(false);
             }
             Action::AddTop => {
                 self.selection = self.tasks.add_top_level();

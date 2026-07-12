@@ -10,6 +10,13 @@
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
 - [x] undo / redo
     - [x] just serialize entire file on each change
+- [ ] start / due dates
+    - [x] struct fields, serialization
+    - [ ] date picker
+    - [ ] display
+    - [ ] TEST start:2026-07-12
+    - [ ] TEST due:2026-07-13
+    - [ ] TEST start:2026-07-12 due:2026-07-13
 - [ ] headers as tabs
 - [ ] small ux things
     - [x] clear text on c

@@ -5,6 +5,8 @@ use ego_tree::{NodeId, NodeMut, NodeRef, Tree};
 pub struct Task {
     pub title: String,
     pub completed: bool,
+    pub start_date: Option<String>,
+    pub due_date: Option<String>,
 }
 
 impl Task {
@@ -16,15 +18,54 @@ impl Task {
         let close_bracket = trimmed.find(']')?;
         let checkbox_content = trimmed[3..close_bracket].trim();
         let completed = matches!(checkbox_content, "x");
-        let title = trimmed[close_bracket + 1..].trim().to_string();
-        if title.is_empty() {
+        let rest = trimmed[close_bracket + 1..].trim().to_string();
+        if rest.is_empty() {
             return None;
         }
+
+        // Extract trailing key:value metadata (start:DATE, due:DATE)
+        // Scan tokens from right to left; stop once a non-metadata token is hit
+        let mut start_date = None;
+        let mut due_date = None;
+        let tokens: Vec<&str> = rest.split(' ').collect();
+        let mut metadata_count = 0;
+        for &token in tokens.iter().rev() {
+            if let Some(val) = token.strip_prefix("start:") {
+                if Self::is_valid_date(val) {
+                    start_date = Some(val.to_string());
+                    metadata_count += 1;
+                    continue;
+                }
+            }
+            if let Some(val) = token.strip_prefix("due:") {
+                if Self::is_valid_date(val) {
+                    due_date = Some(val.to_string());
+                    metadata_count += 1;
+                    continue;
+                }
+            }
+            // Non-metadata token — stop scanning
+            break;
+        }
+
+        // Title is everything before the trailing metadata tokens
+        let title_end = tokens.len() - metadata_count;
+        let title = tokens[..title_end].join(" ");
+
         Some(Task {
             title,
             completed,
+            start_date,
+            due_date,
         })
     }
+
+    fn is_valid_date(s: &str) -> bool {
+        if s.len() != 10 { return false; }
+        let bytes = s.as_bytes();
+        matches!(bytes, [b'0'..=b'9', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9', b'-', b'0'..=b'9', b'0'..=b'9', b'-', b'0'..=b'9', b'0'..=b'9'])
+    }
+
 }
 
 #[derive(Debug)]
@@ -79,7 +120,14 @@ impl TaskTree {
         let indent = node.ancestors().count() - 1;
         let prefix = " ".repeat(indent * indent_width);
         let checkbox = if node.value().completed { "[x]" } else { "[ ]" };
-        let line = format!("{}- {} {}", prefix, checkbox, node.value().title);
+        let task = node.value();
+        let mut line = format!("{}- {} {}", prefix, checkbox, task.title);
+        if let Some(ref start) = task.start_date {
+            line.push_str(&format!(" start:{}", start));
+        }
+        if let Some(ref due) = task.due_date {
+            line.push_str(&format!(" due:{}", due));
+        }
         lines.push(line);
 
         for child in node.children() {
@@ -178,15 +226,39 @@ impl TaskTree {
             style
         };
 
-        let content = format!("{}{} {}", prefix, marker, title);
-        let content_width = content.chars().count();
-        let mut spans: Vec<Span> = vec![Span::styled(content, style)];
+        // Build right-justified date string
+        let date_str = match (&task.start_date, &task.due_date) {
+            (Some(start), Some(due)) => format!("start: {} due: {}", start, due),
+            (Some(start), None) => format!("start: {}", start),
+            (None, Some(due)) => format!("due: {}", due),
+            (None, None) => String::new(),
+        };
+        let date_width = date_str.chars().count();
 
-        // Fill remaining width with neutral spaces carrying the same background
-        let remaining = width.saturating_sub(content_width);
-        if remaining > 0 {
-            let fill = "\u{00A0}".repeat(remaining);
-            spans.push(Span::styled(fill, style));
+        let title_content = format!("{}{} {}", prefix, marker, title);
+        let title_width = title_content.chars().count();
+
+        // If there are dates and enough room, right-justify them; otherwise inline after title
+        let mut spans: Vec<Span> = vec![];
+        let remaining = width.saturating_sub(title_width);
+
+        if !date_str.is_empty() && remaining > date_width {
+            // Right-justified dates with padding between title and dates
+            let gap = remaining - date_width;
+            let gap_fill = "\u{00A0}".repeat(gap);
+            spans.push(Span::styled(title_content, style));
+            spans.push(Span::styled(gap_fill, style));
+            spans.push(Span::styled(date_str, style.fg(Color::Rgb(140, 140, 160))));
+        } else {
+            // No dates or not enough room — just the title
+            let content = title_content;
+            let content_width = content.chars().count();
+            spans.push(Span::styled(content, style));
+            let fill_remaining = width.saturating_sub(content_width);
+            if fill_remaining > 0 {
+                let fill = "\u{00A0}".repeat(fill_remaining);
+                spans.push(Span::styled(fill, style));
+            }
         }
 
         lines.push(Line::from(spans));
