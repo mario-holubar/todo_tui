@@ -39,12 +39,6 @@ impl PartialEq for TaskTree {
 }
 
 impl TaskTree {
-    pub fn new() -> (TaskTree, NodeId) {
-        let tasks = Tree::new(Task::default());
-        let selection = tasks.root().id();
-        (TaskTree { tasks }, selection)
-    }
-
     pub fn from_string(string: &str, indent_width: usize) -> (TaskTree, NodeId) {
         let mut tasks = Tree::new(Task::default());
         let root_id = tasks.root().id();
@@ -64,7 +58,7 @@ impl TaskTree {
 
             if let Some(task) = Task::from_str(trimmed) {
                 // Pop the stack until we find a parent with a smaller indent level
-                while parent_stack.last().map_or(false, |(_, ind)| *ind >= indent) {
+                while parent_stack.last().is_some_and(|(_, ind)| *ind >= indent) {
                     parent_stack.pop();
                 }
 
@@ -130,12 +124,12 @@ impl TaskTree {
         first_pasted_id
     }
 
-    fn clone_subtree(&mut self, source: &TaskTree, node: NodeRef<'_, Task>, parent_id: NodeId) -> NodeId {
+    fn clone_subtree(&mut self, _source: &TaskTree, node: NodeRef<'_, Task>, parent_id: NodeId) -> NodeId {
         let task = (*node.value()).clone();
         let new_id = self.get_node_mut(parent_id).prepend(task).id();
 
         for child in node.children() {
-            self.clone_subtree(source, child, new_id);
+            self.clone_subtree(_source, child, new_id);
         }
 
         new_id
@@ -320,10 +314,6 @@ impl TaskTree {
         self.get_node(id).parent().unwrap().id() == self.tasks.root().id()
     }
 
-    pub fn has_children(&self, id: NodeId) -> bool {
-        self.get_node(id).has_children()
-    }
-
     pub fn move_out(&mut self, id: NodeId) -> Option<NodeId> {
         if self.is_root(id) || self.is_top_level(id) { return None; }
         let parent_id = self.get_node(id).parent().unwrap().id();
@@ -345,10 +335,7 @@ impl TaskTree {
         let prev_sibling = self.get_node(id).prev_sibling();
         let target_parent = prev_sibling.map(|s| s.id())
             .or_else(|| self.get_parent_non_root(id));
-        let target_parent = match target_parent {
-            Some(p) => p,
-            None => return None, // top-level with no previous sibling
-        };
+        let target_parent = target_parent?;
         // Detach the node from its current parent
         self.get_node_mut(id).detach();
         // Append as last child of target parent

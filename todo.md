@@ -8,6 +8,9 @@
 - [x] show cursor in edit mode
 - [x] get rid of ratatui
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
+- [ ] undo / redo
+    - [ ] just serialize entire file on each change
+- [ ] headers as tabs
 - [ ] small ux things
     - [x] clear text on c
     - [x] p / P to paste deleted task
@@ -21,10 +24,7 @@
         - [ ] config option
         - [ ] ui indicator
         - [ ] quit confirmation
-- [ ] headers as tabs
 - [ ] implement above/below as line index to NodeId conversion
-- [ ] undo / redo
-    - [ ] just serialize entire file on each change
 - [ ] color customization
 - [ ] load config file at runtime
     - [ ] partial config support
