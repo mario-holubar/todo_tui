@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use ratatui::{prelude::*, text::Line};
 use ego_tree::{NodeId, NodeMut, NodeRef, Tree};
 
@@ -66,6 +68,21 @@ impl Task {
         matches!(bytes, [b'0'..=b'9', b'0'..=b'9', b'0'..=b'9', b'0'..=b'9', b'-', b'0'..=b'9', b'0'..=b'9', b'-', b'0'..=b'9', b'0'..=b'9'])
     }
 
+    fn is_date_past_or_today(s: &str) -> Option<bool> {
+        let today = time::OffsetDateTime::now_local()
+            .unwrap_or_else(|_| time::OffsetDateTime::now_utc())
+            .date();
+        let bytes = s.as_bytes();
+        let year = i32::from_str(std::str::from_utf8(&bytes[0..4]).ok()?).ok()?;
+        let month_u8 = u8::from_str(std::str::from_utf8(&bytes[5..7]).ok()?).ok()?;
+        let day = u8::from_str(std::str::from_utf8(&bytes[8..10]).ok()?).ok()?;
+        let date = time::Date::from_calendar_date(year, time::Month::try_from(month_u8).ok()?, day).ok()?;
+        Some(date <= today)
+    }
+
+    fn is_date_future(s: &str) -> Option<bool> {
+        Self::is_date_past_or_today(s).map(|v| !v)
+    }
 }
 
 #[derive(Debug)]
@@ -199,42 +216,86 @@ impl TaskTree {
         let is_ancestor_of_selected = node.descendants().skip(1).any(|n| n.id() == selected_id);
         let has_same_ancestry_as_selected = node.ancestors().any(|n| n.id() == self.tasks.get(selected_id).unwrap().parent().unwrap().id());
         let is_descendant_of_selected = node.ancestors().any(|n| n.id() == selected_id);
-
-        let prefix = "\u{00A0}".repeat(indent * indent_width);
-        let marker = if node.value().completed { "◉" } else { "◯" };
-        let title = &node.value().title;
+        let start_future = task.start_date.as_ref().and_then(|s| Task::is_date_future(s)).unwrap_or(false);
+        let any_ancestor_start_future = node.ancestors().any(|n| {
+            n.value().start_date.as_ref().and_then(|s| Task::is_date_future(s)).unwrap_or(false)
+        });
+        let due_past_or_today = task.due_date.as_ref().and_then(|s| Task::is_date_past_or_today(s)).unwrap_or(false);
 
         let style = Style::default();
         // Text color
         let style = if task.completed {
+            // Completed
             style.fg(Color::Rgb(56, 56, 64))
+        } else if due_past_or_today {
+            // (Over)due
+            style.fg(Color::Red).bold()
         } else if !is_ancestor_of_selected && !has_same_ancestry_as_selected {
+            // Other branch
             style.fg(Color::Rgb(84, 84, 96))
+        } else if start_future {
+            // Not starting yet
+            style.fg(Color::Yellow)
+        } else if any_ancestor_start_future {
+            // Not starting yet (descendant)
+            style.fg(Color::Rgb(140, 140, 160))
         } else if node.first_child().is_some() && is_first_actionable {
-            style.bold()
+            // Parent
+            style
         } else if is_first_actionable {
-            style.green().bold()
+            // First actionable
+            style.green()
         } else if is_ancestor_of_selected {
+            // Ancestor
             style
         } else {
+            // Later
             style.fg(Color::Rgb(140, 140, 160))
         };
+        let style = if is_first_actionable { style.bold() } else { style };
         // Background color
-        let style = if is_selected || is_descendant_of_selected {
-            style.bg(Color::Rgb(36, 36, 42))
+        let background = if is_selected {
+            Style::new().bg(Color::Rgb(48, 48, 64))
+        } else if is_descendant_of_selected {
+            Style::new().bg(Color::Rgb(36, 36, 48))
         } else {
-            style
+            Style::new()
         };
+        let style = style.patch(background);
 
-        // Build right-justified date string
-        let date_str = match (&task.start_date, &task.due_date) {
-            (Some(start), Some(due)) => format!("start: {} due: {}", start, due),
-            (Some(start), None) => format!("start: {}", start),
-            (None, Some(due)) => format!("due: {}", due),
-            (None, None) => String::new(),
-        };
-        let date_width = date_str.chars().count();
+        // Build individual date spans with their own styles
+        let mut date_spans: Vec<Span> = vec![];
+        if let Some(ref start) = task.start_date {
+            let start_text = format!("start: {}", start);
+            let s = if !start_future {
+                Style::default().fg(Color::Rgb(56, 56, 64))
+            } else {
+                Style::default().fg(Color::Rgb(140, 140, 160))
+            }.patch(background);
+            date_spans.push(Span::styled(start_text, s));
+        }
+        if let Some(ref due) = task.due_date {
+            let due_text = format!("due: {}", due);
+            let s = if due_past_or_today {
+                Style::default().fg(Color::Red).bold()
+            } else if start_future {
+                Style::default().fg(Color::Rgb(56, 56, 64))
+            } else {
+                Style::default().fg(Color::Yellow)
+            }.patch(background);
+            // Add a separator if both dates are present
+            if task.start_date.is_some() {
+                date_spans.push(Span::styled(" ", background));
+            }
+            date_spans.push(Span::styled(due_text, s));
+        }
 
+        // Calculate total date width from spans
+        let date_width: usize = date_spans.iter().map(|sp| sp.width()).sum();
+
+        let prefix = "\u{00A0}".repeat(indent * indent_width);
+        let marker = if node.value().completed { "◉" } else { "◯" };
+        let title = &node.value().title;
         let title_content = format!("{}{} {}", prefix, marker, title);
         let title_width = title_content.chars().count();
 
@@ -242,13 +303,15 @@ impl TaskTree {
         let mut spans: Vec<Span> = vec![];
         let remaining = width.saturating_sub(title_width);
 
-        if !date_str.is_empty() && remaining > date_width {
+        if !date_spans.is_empty() && remaining > date_width {
             // Right-justified dates with padding between title and dates
             let gap = remaining - date_width;
             let gap_fill = "\u{00A0}".repeat(gap);
             spans.push(Span::styled(title_content, style));
             spans.push(Span::styled(gap_fill, style));
-            spans.push(Span::styled(date_str, style.fg(Color::Rgb(140, 140, 160))));
+            for ds in date_spans {
+                spans.push(ds);
+            }
         } else {
             // No dates or not enough room — just the title
             let content = title_content;
