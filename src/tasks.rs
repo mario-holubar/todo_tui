@@ -387,7 +387,7 @@ impl TaskTree {
     pub fn add_sibling_below(&mut self, id: NodeId) -> NodeId {
         // Create sibling node
         let task = Task::default();
-        let parent = self.get_node(id).parent().unwrap().id();
+        let parent = self.get_node(id).parent().unwrap_or(self.tasks.root()).id();
         let added_id = self.get_node_mut(parent).append(task).id();
 
         // Move it to under id

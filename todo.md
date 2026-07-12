@@ -12,13 +12,10 @@
     - [x] clear text on c
     - [x] p / P to paste deleted task
     - [x] y to yank
-    - [ ] shift-i to insert
-    - [ ] move selection down after completing task
-    - [ ] unindent or delete children on task delete
+    - [ ] move selection down after completing task?
     - [ ] arrow keys
     - [ ] gg / G
-    - [ ] allow o/O without selection
-    - [ ] promote first / last sibling when moved
+    - [x] allow o/O without selection
     - [ ] manual save
         - [ ] keybind
         - [ ] config option
