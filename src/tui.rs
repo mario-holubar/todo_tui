@@ -272,7 +272,8 @@ impl Tui {
     fn draw(&self, frame: &mut Frame) {
         let area = frame.area();
 
-        let lines = self.tasks.display(self.config.display_indent, self.selection);
+        let inner_width = (area.width - 2) as usize; // subtract borders
+        let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width);
         let text = Text::from(lines);
         let paragraph = Paragraph::new(text).block(
             Block::default()

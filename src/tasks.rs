@@ -103,13 +103,13 @@ impl TaskTree {
         lines.join("\n") + "\n"
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId) {
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize) {
         let indent = node.ancestors().count() - 1;
         let task = node.value();
         let is_first_actionable = self.is_first_actionable(node.id());
         let is_selected = node.id() == selected_id;
-        let is_ancestor_of_selected = node.descendants().any(|n| n.id() == selected_id);
-        let is_sibling_of_selected = node.ancestors().any(|n| n.id() == self.tasks.get(selected_id).unwrap().parent().unwrap().id());
+        let is_ancestor_of_selected = node.descendants().skip(1).any(|n| n.id() == selected_id);
+        let has_same_ancestry_as_selected = node.ancestors().any(|n| n.id() == self.tasks.get(selected_id).unwrap().parent().unwrap().id());
         let is_descendant_of_selected = node.ancestors().any(|n| n.id() == selected_id);
 
         let prefix = "\u{00A0}".repeat(indent * indent_width);
@@ -120,34 +120,46 @@ impl TaskTree {
         // Text color
         let style = if task.completed {
             style.fg(Color::Rgb(56, 56, 64))
+        } else if !is_ancestor_of_selected && !has_same_ancestry_as_selected {
+            style.fg(Color::Rgb(84, 84, 96))
         } else if node.first_child().is_some() && is_first_actionable {
-            style
+            style.bold()
         } else if is_first_actionable {
             style.green().bold()
+        } else if is_ancestor_of_selected {
+            style
         } else {
-            style.fg(Color::Rgb(112, 112, 128))
+            style.fg(Color::Rgb(140, 140, 160))
         };
         // Background color
         let style = if is_selected || is_descendant_of_selected {
-            style.bg(Color::Rgb(56, 56, 64))
-        } else if !is_sibling_of_selected && !is_ancestor_of_selected {
-            style.dim()
+            style.bg(Color::Rgb(36, 36, 42))
         } else {
             style
         };
 
-        let line = Line::from(format!("{}{} {}", prefix, marker, title)).patch_style(style);
-        lines.push(line);
+        let content = format!("{}{} {}", prefix, marker, title);
+        let content_width = content.chars().count();
+        let mut spans: Vec<Span> = vec![Span::styled(content, style)];
+
+        // Fill remaining width with neutral spaces carrying the same background
+        let remaining = width.saturating_sub(content_width);
+        if remaining > 0 {
+            let fill = "\u{00A0}".repeat(remaining);
+            spans.push(Span::styled(fill, style));
+        }
+
+        lines.push(Line::from(spans));
 
         for child in node.children() {
-            self.display_node(lines, child, indent_width, selected_id);
+            self.display_node(lines, child, indent_width, selected_id, width);
         }
     }
 
-    pub fn display(&self, indent_width: usize, selected_id: NodeId) -> Vec<Line<'_>> {
+    pub fn display(&self, indent_width: usize, selected_id: NodeId, width: usize) -> Vec<Line<'_>> {
         let mut lines: Vec<Line> = Vec::new();
         for child in self.tasks.root().children() {
-            self.display_node(&mut lines, child, indent_width, selected_id);
+            self.display_node(&mut lines, child, indent_width, selected_id, width);
         }
         lines
     }
