@@ -44,6 +44,9 @@ display_indent = 2     # Number of spaces per indent to render in the app
 "I" = "EditBeginning"
 "c" = "EditClear"
 "C" = "EditClear"
+"u" = "Undo"
+"U" = "Redo"
+"Ctrl+r" = "Redo"
 
 [text_keymap]
 "Ctrl+d" = "Quit"

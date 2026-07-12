@@ -8,8 +8,8 @@
 - [x] show cursor in edit mode
 - [x] get rid of ratatui
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
-- [ ] undo / redo
-    - [ ] just serialize entire file on each change
+- [x] undo / redo
+    - [x] just serialize entire file on each change
 - [ ] headers as tabs
 - [ ] small ux things
     - [x] clear text on c

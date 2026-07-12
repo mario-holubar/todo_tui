@@ -50,6 +50,8 @@ pub enum Action {
     EditBeginning,
     EditClear,
     EditDone,
+    Undo,
+    Redo,
     NoOp,
 }
 
@@ -62,6 +64,8 @@ pub struct Tui {
     clipboard: Option<String>,
     input_mode: InputMode,
     state_changed: bool,
+    undo_stack: Vec<(String, Vec<usize>)>,
+    redo_stack: Vec<(String, Vec<usize>)>,
 }
 
 impl Tui {
@@ -87,18 +91,9 @@ impl Tui {
             clipboard: None,
             input_mode: InputMode::Normal,
             state_changed: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
-    }
-
-    fn save_todos(&self) {
-        // Serialize todos
-        let content = self.tasks.to_string(self.config.file_indent);
-        // Verify with a round trip test
-        let (_reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
-        // TODO Equality of Trees is strict (includes IDs). Need to walk the trees to verify
-        //assert_eq!(content, reconstructed_tasks.to_string(self.config.file_indent));
-        // Save to file
-        fs::write(&self.config.todo_file, content).unwrap();
     }
 
     fn copy_selection_to_clipboard(&mut self) {
@@ -130,6 +125,8 @@ impl Tui {
 
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
+        let prev_selection_path = self.tasks.node_to_path(self.selection);
+
         // Resolve action from the appropriate keymap
         let action = match self.input_mode {
             InputMode::Edit => self.config.text_keymap.dispatch(key_event),
@@ -264,6 +261,28 @@ impl Tui {
                     self.state_changed = true;
                 }
             }
+            Action::Undo => {
+                if let Some((prev_content, selection_path)) = self.undo_stack.pop() {
+                    let current_content = fs::read_to_string(&self.config.todo_file)
+                        .unwrap_or_default();
+                    self.redo_stack.push((current_content, selection_path.clone()));
+                    let (tasks, default_selection) = TaskTree::from_string(&prev_content, self.config.file_indent);
+                    self.selection = tasks.resolve_path(&selection_path).unwrap_or(default_selection);
+                    self.tasks = tasks;
+                    fs::write(&self.config.todo_file, &prev_content).unwrap();
+                }
+            }
+            Action::Redo => {
+                if let Some((next_content, selection_path)) = self.redo_stack.pop() {
+                    let current_content = fs::read_to_string(&self.config.todo_file)
+                        .unwrap_or_default();
+                    self.undo_stack.push((current_content, selection_path.clone()));
+                    let (tasks, default_selection) = TaskTree::from_string(&next_content, self.config.file_indent);
+                    self.selection = tasks.resolve_path(&selection_path).unwrap_or(default_selection);
+                    self.tasks = tasks;
+                    fs::write(&self.config.todo_file, &next_content).unwrap();
+                }
+            }
             Action::NoOp if self.input_mode == InputMode::Edit => {
                 // Input text
                 self.text_input.handle_event(&Event::Key(key_event));
@@ -276,7 +295,16 @@ impl Tui {
 
         // Save state if changed
         if self.input_mode == InputMode::Normal && self.state_changed {
-            self.save_todos();
+            let old_content = fs::read_to_string(&self.config.todo_file)
+                .unwrap_or_default();
+            if self.undo_stack.last() != Some(&(old_content.clone(), prev_selection_path.clone())) {
+                self.undo_stack.push((old_content, prev_selection_path));
+            }
+            self.redo_stack.clear();
+
+            let content = self.tasks.to_string(self.config.file_indent);
+            let (_reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
+            fs::write(&self.config.todo_file, content).unwrap();
             self.state_changed = false;
         }
 

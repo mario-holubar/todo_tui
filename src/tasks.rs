@@ -453,4 +453,31 @@ impl TaskTree {
         if self.is_root(id) { return; }
         self.get_node_mut(id).value().title = title;
     }
+
+    // Convert a NodeId to a path of child indices (e.g. [2, 0, 1] = 3rd top-level -> 1st child -> 2nd child)
+    pub fn node_to_path(&self, id: NodeId) -> Vec<usize> {
+        let node = self.get_node(id);
+        let mut path = Vec::new();
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            // Find the index of current among parent's children
+            let idx = parent.children().position(|c| c.id() == current.id());
+            if let Some(i) = idx {
+                path.push(i);
+            }
+            current = parent;
+        }
+        path.reverse();
+        path
+    }
+
+    // Resolve a path of child indices back to a NodeId. Returns None if path is invalid.
+    pub fn resolve_path(&self, path: &[usize]) -> Option<NodeId> {
+        let mut current = self.tasks.root();
+        for &idx in path {
+            let child = current.children().nth(idx)?;
+            current = child;
+        }
+        Some(current.id())
+    }
 }
