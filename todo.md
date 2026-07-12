@@ -1,31 +1,16 @@
-- [x] take task functionality out of tui.rs
-    - [x] decide on flat or nested structure
-        - [x] tree or line based navigation?
-    - [x] task list struct
-    - [x] or revisit nested Task struct
-- [x] Use ego_tree instead so I can move branches
-- [x] rename render_indent to display_indent
-- [x] show cursor in edit mode
-- [x] get rid of ratatui
-    - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
-- [x] undo / redo
-    - [x] just serialize entire file on each change
 - [ ] start / due dates
     - [x] struct fields, serialization
-    - [ ] date picker
+    - [x] date picker
     - [ ] display
     - [ ] TEST start:2026-07-12
     - [ ] TEST due:2026-07-13
-    - [ ] TEST start:2026-07-12 due:2026-07-13
+    - [ ] TEST start:2026-07-14 due:2026-07-14
+- [ ] search
 - [ ] headers as tabs
 - [ ] small ux things
-    - [x] clear text on c
-    - [x] p / P to paste deleted task
-    - [x] y to yank
     - [ ] move selection down after completing task?
     - [ ] arrow keys
     - [ ] gg / G
-    - [x] allow o/O without selection
     - [ ] manual save
         - [ ] keybind
         - [ ] config option

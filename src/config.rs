@@ -14,6 +14,7 @@ pub struct Config {
     pub display_indent: usize,
     pub normal_keymap: Keybinds<Action>,
     pub text_keymap: Keybinds<Action>,
+    pub date_picker_keymap: Keybinds<Action>,
 }
 
 impl Config {

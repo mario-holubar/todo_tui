@@ -1482,6 +1482,7 @@ dependencies = [
  "keybinds",
  "ratatui",
  "serde",
+ "time",
  "toml",
  "tui-input",
 ]

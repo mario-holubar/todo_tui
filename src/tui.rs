@@ -7,10 +7,14 @@ use ratatui::{
         event::{self, Event, KeyEvent},
         execute,
     },
+    layout::{Constraint, Layout as RatatuiLayout, Rect},
+    text::Span,
     widgets::{Block, Borders, Paragraph},
 };
+use ratatui::widgets::calendar::{CalendarEventStore, Monthly};
 use ego_tree::NodeId;
 use tui_input::{backend::crossterm::EventHandler, Input};
+use time::{Date, Month, OffsetDateTime};
 
 use crate::config::Config;
 use crate::tasks::*;
@@ -19,6 +23,62 @@ use crate::tasks::*;
 pub enum InputMode {
     Normal,
     Edit,
+    DatePicker,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DatePickerState {
+    is_start_date: bool,
+    display_date: Date,
+    cursor_date: Date,
+}
+
+impl DatePickerState {
+    fn new(is_start_date: bool, initial_date: Option<Date>) -> Self {
+        let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).date();
+        let display_date = initial_date.unwrap_or(now);
+        Self {
+            is_start_date,
+            display_date,
+            cursor_date: display_date,
+        }
+    }
+
+    fn navigate_month(&mut self, months: i32) {
+        let sign = if months > 0 { 1 } else { -1 };
+        let mut target_year = self.display_date.year();
+        let mut target_month = self.display_date.month() as i32 + months;
+
+        // Normalize month/year
+        while target_month > 12 {
+            target_month -= 12;
+            target_year += sign;
+        }
+        while target_month < 1 {
+            target_month += 12;
+            target_year -= sign;
+        }
+
+        let new_month = Month::try_from(target_month as u8).unwrap_or(Month::January);
+        // Clamp day to valid range for the target month
+        let max_day = new_month.length(target_year);
+        let day = self.cursor_date.day().min(max_day);
+
+        let new_date = Date::from_calendar_date(target_year, new_month, day).unwrap_or(self.cursor_date);
+        self.cursor_date = new_date;
+        self.display_date = new_date;
+    }
+
+    fn navigate_day(&mut self, delta_days: i32) {
+        use time::Duration;
+        self.cursor_date = self.cursor_date.checked_add(Duration::days(delta_days as i64)).unwrap_or(self.cursor_date);
+        // If cursor moved outside the displayed month, update display
+        if self.cursor_date.month() != self.display_date.month()
+            || self.cursor_date.year() != self.display_date.year()
+        {
+            self.display_date = self.cursor_date;
+        }
+    }
 }
 
 // TODO Need separate edit mode actions, or handle edit mode for all cases
@@ -52,6 +112,15 @@ pub enum Action {
     EditDone,
     SetStartDate,
     SetDueDate,
+    DatePickerConfirm,
+    DatePickerCancel,
+    DatePickerPrevMonth,
+    DatePickerNextMonth,
+    DatePickerDayUp,
+    DatePickerDayDown,
+    DatePickerDayLeft,
+    DatePickerDayRight,
+    DatePickerClear,
     Undo,
     Redo,
     NoOp,
@@ -64,6 +133,7 @@ pub struct Tui {
     selection: NodeId,
     text_input: Input,
     clipboard: Option<String>,
+    date_picker: Option<DatePickerState>,
     input_mode: InputMode,
     state_changed: bool,
     undo_stack: Vec<(String, Vec<usize>)>,
@@ -91,6 +161,7 @@ impl Tui {
             selection,
             text_input: Input::new(String::new()),
             clipboard: None,
+            date_picker: None,
             input_mode: InputMode::Normal,
             state_changed: false,
             undo_stack: Vec::new(),
@@ -126,19 +197,120 @@ impl Tui {
     }
 
     fn open_date_picker(&mut self, is_start_date: bool) {
-        let label = if is_start_date { "Start date" } else { "Due date" };
-        println!("Opening {} picker for task: {}", label, self.tasks.get_task(self.selection).title);
-        // TODO: Implement date picker overlay using ratatui_widgets::calendar::Monthly
+        let task = self.tasks.get_task(self.selection);
+        let initial_date = if is_start_date {
+            task.start_date.as_ref().and_then(|s| Self::parse_date(s))
+        } else {
+            task.due_date.as_ref().and_then(|s| Self::parse_date(s))
+        };
+        self.date_picker = Some(DatePickerState::new(is_start_date, initial_date));
+        self.input_mode = InputMode::DatePicker;
+    }
+
+    fn parse_date(s: &str) -> Option<Date> {
+        let bytes = s.as_bytes();
+        if bytes.len() != 10 {
+            return None;
+        }
+        let year = std::str::from_utf8(&bytes[0..4]).ok()?.parse::<i32>().ok()?;
+        let month_u8 = std::str::from_utf8(&bytes[5..7]).ok()?.parse::<u8>().ok()?;
+        let day = std::str::from_utf8(&bytes[8..10]).ok()?.parse::<u8>().ok()?;
+        Date::from_calendar_date(year, Month::try_from(month_u8).ok()?, day).ok()
+    }
+
+    fn close_date_picker(&mut self) {
+        if let Some(ref picker) = self.date_picker {
+            let date_str = format!("{}-{:02}-{:02}", picker.cursor_date.year(), picker.cursor_date.month() as u8, picker.cursor_date.day());
+            let mut task = self.tasks.get_task(self.selection).clone();
+            if picker.is_start_date {
+                task.start_date = Some(date_str);
+            } else {
+                task.due_date = Some(date_str);
+            }
+            self.tasks.set_task(self.selection, task);
+            self.state_changed = true;
+        }
+        self.date_picker = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    fn update_date_picker(&mut self, key_event: KeyEvent) {
+        let action = self.config.date_picker_keymap.dispatch(key_event)
+            .copied()
+            .unwrap_or(Action::NoOp);
+
+        match action {
+            Action::DatePickerConfirm => {
+                self.close_date_picker();
+            }
+            Action::DatePickerCancel => {
+                self.date_picker = None;
+                self.input_mode = InputMode::Normal;
+            }
+            Action::DatePickerPrevMonth => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_month(-1);
+                }
+            }
+            Action::DatePickerNextMonth => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_month(1);
+                }
+            }
+            Action::DatePickerDayUp => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_day(-7);
+                }
+            }
+            Action::DatePickerDayDown => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_day(7);
+                }
+            }
+            Action::DatePickerDayLeft => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_day(-1);
+                }
+            }
+            Action::DatePickerDayRight => {
+                if let Some(ref mut picker) = self.date_picker {
+                    picker.navigate_day(1);
+                }
+            }
+            Action::DatePickerClear => {
+                let mut task = self.tasks.get_task(self.selection).clone();
+                if let Some(ref picker) = self.date_picker {
+                    if picker.is_start_date {
+                        task.start_date = None;
+                    } else {
+                        task.due_date = None;
+                    }
+                }
+                self.tasks.set_task(self.selection, task);
+                self.state_changed = true;
+                self.date_picker = None;
+                self.input_mode = InputMode::Normal;
+            }
+            Action::NoOp => {}
+            _ => {} // Unhandled actions are ignored
+        }
     }
 
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
         let prev_selection_path = self.tasks.node_to_path(self.selection);
 
+        // Handle date picker mode separately
+        if self.input_mode == InputMode::DatePicker {
+            self.update_date_picker(key_event);
+            return false;
+        }
+
         // Resolve action from the appropriate keymap
         let action = match self.input_mode {
             InputMode::Edit => self.config.text_keymap.dispatch(key_event),
             InputMode::Normal => self.config.normal_keymap.dispatch(key_event),
+            InputMode::DatePicker => unreachable!(),
         }.copied()
         .unwrap_or(Action::NoOp);
 
@@ -304,6 +476,11 @@ impl Tui {
                 task.title = self.text_input.value().to_string();
                 self.tasks.set_task(self.selection, task);
             }
+            Action::DatePickerConfirm | Action::DatePickerCancel | Action::DatePickerPrevMonth | Action::DatePickerNextMonth
+            | Action::DatePickerDayUp | Action::DatePickerDayDown | Action::DatePickerDayLeft | Action::DatePickerDayRight
+            | Action::DatePickerClear => {
+                // Only handled in date picker mode
+            }
             Action::NoOp => {}
         }
 
@@ -350,6 +527,50 @@ impl Tui {
                 .title(format!(" {} ", self.config.todo_file)),
         );
         frame.render_widget(paragraph, area);
+
+        // Draw date picker overlay if active
+        if let Some(ref picker) = self.date_picker {
+            self.draw_date_picker(frame, area, picker);
+        }
+    }
+
+    fn draw_date_picker(&self, frame: &mut Frame, area: Rect, picker: &DatePickerState) {
+        let label = if picker.is_start_date { "Start date" } else { "Due date" };
+        let title = format!(" {} (Enter to confirm, Ctrl+q to cancel) ", label);
+
+        // Center the calendar in the available area
+        let cal_width: u16 = 25;
+        let cal_height: u16 = 9;
+        let popup_width = cal_width.min(area.width.saturating_sub(2));
+        let popup_height = cal_height.min(area.height.saturating_sub(2));
+
+        let outer = RatatuiLayout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(popup_height),
+            Constraint::Fill(1),
+        ]);
+        let [_top, mid, _bot] = area.layout(&outer);
+
+        let inner = RatatuiLayout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Length(popup_width),
+            Constraint::Fill(1),
+        ]);
+        let [_left, popup_area, _right] = mid.layout(&inner);
+
+        // Build event store: highlight cursor date and today
+        let mut events = CalendarEventStore::default();
+        events.add(picker.cursor_date, Style::default().bg(Color::Rgb(36, 36, 42)).bold());
+
+        let calendar = Monthly::new(picker.display_date, events)
+            .show_month_header(Style::default().bold())
+            .show_weekdays_header(Style::default().fg(Color::Rgb(140, 140, 160)))
+            .block(
+                Block::bordered()
+                    .title(Span::styled(title, Style::default().bold())),
+            );
+
+        frame.render_widget(calendar, popup_area);
     }
 
     pub fn main(&mut self) -> Result<(), Box<dyn Error>> {
