@@ -103,10 +103,13 @@ impl TaskTree {
         lines.join("\n") + "\n"
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize) {
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId) {
         let indent = node.ancestors().count() - 1;
         let task = node.value();
         let is_first_actionable = self.is_first_actionable(node.id());
+        let is_ancestor_of_selected = node.descendants().any(|n| n.id() == selected_id);
+        let is_sibling_of_selected = node.ancestors().any(|n| n.id() == self.tasks.get(selected_id).unwrap().parent().unwrap().id());
+        let is_descendant_of_selected = node.ancestors().any(|n| n.id() == selected_id);
 
         let prefix = "\u{00A0}".repeat(indent * indent_width);
         let marker = if node.value().completed { "◉" } else { "◯" };
@@ -114,12 +117,18 @@ impl TaskTree {
 
         let mut style = Style::default();
         if task.completed {
-            style = style.dark_gray().dim();
+            style = style.fg(Color::Rgb(64, 64, 64));
         } else if node.first_child().is_some() && is_first_actionable {
             // default style, no change needed
         } else if is_first_actionable {
             style = style.green().bold();
         } else {
+            style = style.fg(Color::Rgb(128, 128, 128));
+        }
+        if is_descendant_of_selected {
+            style = style.bg(Color::Rgb(56, 56, 64));
+        }
+        else if !is_sibling_of_selected && !is_ancestor_of_selected {
             style = style.dim();
         }
 
@@ -127,14 +136,14 @@ impl TaskTree {
         lines.push(line);
 
         for child in node.children() {
-            self.display_node(lines, child, indent_width);
+            self.display_node(lines, child, indent_width, selected_id);
         }
     }
 
-    pub fn display(&self, indent_width: usize) -> Vec<Line<'_>> {
+    pub fn display(&self, indent_width: usize, selected_id: NodeId) -> Vec<Line<'_>> {
         let mut lines: Vec<Line> = Vec::new();
         for child in self.tasks.root().children() {
-            self.display_node(&mut lines, child, indent_width);
+            self.display_node(&mut lines, child, indent_width, selected_id);
         }
         lines
     }

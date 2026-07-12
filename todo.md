@@ -8,6 +8,7 @@
 - [x] show cursor in edit mode
 - [x] get rid of ratatui
     - [x] or get rid of crossterm dependency and use ratatui::crossterm instead
+- [ ] color customization
 - [ ] small ux things
     - [x] clear text on c
     - [ ] p / P to paste deleted task

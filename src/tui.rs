@@ -265,10 +265,10 @@ impl Tui {
         let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
         // Row: 1 (title bar / top border) + selected task index
         let row = 1 + selected_idx as u16;
-        // Column: 1 (left border) + 2 ("> ") + indent prefix + 1 (marker) + 1 (space after marker)
+        // Column: 1 (left border) + indent prefix + 1 (marker) + 1 (space after marker)
         let node = self.tasks.get_node(self.selection);
         let indent = node.ancestors().count() - 1;
-        let col: u16 = (1 + 2 + indent * self.config.display_indent + 1 + 1
+        let col: u16 = (1 + indent * self.config.display_indent + 1 + 1
             + self.text_input.cursor()) as u16;
         (col, row)
     }
@@ -284,15 +284,17 @@ impl Tui {
     fn draw_list(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        let lines = self.tasks.display(self.config.display_indent);
+        let lines = self.tasks.display(self.config.display_indent, self.selection);
         let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
+        // TODO Apply all style here?
+        //      Currently if cursor is at end of string it's not styled
         let list = List::new(items)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .title(format!(" {} ", self.config.todo_file)),
             )
-            .highlight_symbol("> ")
+            //.highlight_symbol("> ")
             .highlight_style(Style::default().bg(Color::Rgb(56, 56, 64)));
 
         frame.render_stateful_widget(list, area, &mut self.list_state);
