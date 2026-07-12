@@ -7,7 +7,7 @@ use ratatui::{
         event::{self, Event, KeyEvent},
         execute,
     },
-    widgets::{Block, Borders, List, ListItem, ListState},
+    widgets::{Block, Borders, Paragraph},
 };
 use ego_tree::NodeId;
 use tui_input::{backend::crossterm::EventHandler, Input};
@@ -58,8 +58,6 @@ pub struct Tui {
     text_input: Input,
     input_mode: InputMode,
     state_changed: bool,
-    list_state: ListState,
-    // TODO Does state_changed need to be a field?
 }
 
 impl Tui {
@@ -77,7 +75,6 @@ impl Tui {
         // Verify with a round trip test
         assert_eq!(content, tasks.to_string(config.file_indent));
 
-        let list_state = ListState::default().with_selected(Some(0));
         Tui {
             config,
             tasks,
@@ -85,7 +82,6 @@ impl Tui {
             text_input: Input::new(String::new()),
             input_mode: InputMode::Normal,
             state_changed: false,
-            list_state,
         }
     }
 
@@ -273,37 +269,22 @@ impl Tui {
         (col, row)
     }
 
-    fn sync_selection(&mut self) {
-        let all_ids = self.tasks.all_ids();
-        let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
-        if self.list_state.selected() != Some(selected_idx) {
-            self.list_state.select(Some(selected_idx));
-        }
-    }
-
-    fn draw_list(&mut self, frame: &mut Frame) {
+    fn draw(&self, frame: &mut Frame) {
         let area = frame.area();
 
         let lines = self.tasks.display(self.config.display_indent, self.selection);
-        let items: Vec<ListItem> = lines.into_iter().map(ListItem::new).collect();
-        // TODO Apply all style here?
-        //      Currently if cursor is at end of string it's not styled
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!(" {} ", self.config.todo_file)),
-            )
-            //.highlight_symbol("> ")
-            .highlight_style(Style::default().bg(Color::Rgb(56, 56, 64)));
-
-        frame.render_stateful_widget(list, area, &mut self.list_state);
+        let text = Text::from(lines);
+        let paragraph = Paragraph::new(text).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} ", self.config.todo_file)),
+        );
+        frame.render_widget(paragraph, area);
     }
 
     pub fn main(&mut self) -> Result<(), Box<dyn Error>> {
         ratatui::run(|terminal| {
-            self.sync_selection();
-            terminal.draw(|frame| self.draw_list(frame))?;
+            terminal.draw(|frame| self.draw(frame))?;
 
             loop {
                 if event::poll(std::time::Duration::MAX)? {
@@ -314,8 +295,7 @@ impl Tui {
                         }
                     }
                 }
-                self.sync_selection();
-                terminal.draw(|frame| self.draw_list(frame))?;
+                terminal.draw(|frame| self.draw(frame))?;
 
                 if self.input_mode == InputMode::Edit {
                     let (col, row) = self.cursor_position();

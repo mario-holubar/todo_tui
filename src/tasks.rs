@@ -107,6 +107,7 @@ impl TaskTree {
         let indent = node.ancestors().count() - 1;
         let task = node.value();
         let is_first_actionable = self.is_first_actionable(node.id());
+        let is_selected = node.id() == selected_id;
         let is_ancestor_of_selected = node.descendants().any(|n| n.id() == selected_id);
         let is_sibling_of_selected = node.ancestors().any(|n| n.id() == self.tasks.get(selected_id).unwrap().parent().unwrap().id());
         let is_descendant_of_selected = node.ancestors().any(|n| n.id() == selected_id);
@@ -115,22 +116,25 @@ impl TaskTree {
         let marker = if node.value().completed { "◉" } else { "◯" };
         let title = &node.value().title;
 
-        let mut style = Style::default();
-        if task.completed {
-            style = style.fg(Color::Rgb(64, 64, 64));
+        let style = Style::default();
+        // Text color
+        let style = if task.completed {
+            style.fg(Color::Rgb(56, 56, 64))
         } else if node.first_child().is_some() && is_first_actionable {
-            // default style, no change needed
+            style
         } else if is_first_actionable {
-            style = style.green().bold();
+            style.green().bold()
         } else {
-            style = style.fg(Color::Rgb(128, 128, 128));
-        }
-        if is_descendant_of_selected {
-            style = style.bg(Color::Rgb(56, 56, 64));
-        }
-        else if !is_sibling_of_selected && !is_ancestor_of_selected {
-            style = style.dim();
-        }
+            style.fg(Color::Rgb(112, 112, 128))
+        };
+        // Background color
+        let style = if is_selected || is_descendant_of_selected {
+            style.bg(Color::Rgb(56, 56, 64))
+        } else if !is_sibling_of_selected && !is_ancestor_of_selected {
+            style.dim()
+        } else {
+            style
+        };
 
         let line = Line::from(format!("{}{} {}", prefix, marker, title)).patch_style(style);
         lines.push(line);
