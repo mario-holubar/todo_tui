@@ -536,7 +536,7 @@ impl Tui {
 
     fn draw_date_picker(&self, frame: &mut Frame, area: Rect, picker: &DatePickerState) {
         let label = if picker.is_start_date { "Start date" } else { "Due date" };
-        let title = format!(" {} (Enter to confirm, Ctrl+q to cancel) ", label);
+        let title = format!(" {} ", label);
 
         // Center the calendar in the available area
         let cal_width: u16 = 25;

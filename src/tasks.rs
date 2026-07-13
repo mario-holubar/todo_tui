@@ -462,6 +462,7 @@ impl TaskTree {
             if prev.id() == parent_id { break; }
             self.swap_siblings(id, prev.id());
         }
+        self.update_ancestors_completion(parent_id);
         Some(id)
     }
 
@@ -475,6 +476,7 @@ impl TaskTree {
         self.get_node_mut(id).detach();
         // Append as last child of target parent
         self.get_node_mut(target_parent).append_id(id);
+        self.update_ancestors_completion(id);
         Some(id)
     }
 
@@ -503,7 +505,9 @@ impl TaskTree {
 
     pub fn add_top_level(&mut self) -> NodeId {
         let task = Task::default();
-        self.tasks.root_mut().prepend(task).id()
+        let id = self.tasks.root_mut().prepend(task).id();
+        self.update_ancestors_completion(id);
+        id
     }
 
     pub fn add_sibling_below(&mut self, id: NodeId) -> NodeId {
@@ -519,6 +523,7 @@ impl TaskTree {
             }
             self.swap_siblings(added_id, above.id());
         }
+        self.update_ancestors_completion(added_id);
         added_id
     }
 
@@ -533,14 +538,16 @@ impl TaskTree {
 
     pub fn add_child(&mut self, id: NodeId) -> NodeId {
         let task = Task::default();
-        self.get_node_mut(id).prepend(task).id()
+        let added_id = self.get_node_mut(id).prepend(task).id();
+        self.update_ancestors_completion(added_id);
+        added_id
     }
 
     pub fn remove(&mut self, id: NodeId) -> NodeId {
         if self.is_root(id) { return id; }
         let node = self.get_node(id);
-        let next_selected = node.prev_sibling().map(|n| n.id()).unwrap_or(
-            node.next_sibling().map(|n| n.id()).unwrap_or(
+        let next_selected = node.next_sibling().map(|n| n.id()).unwrap_or(
+            node.prev_sibling().map(|n| n.id()).unwrap_or(
                 node.parent().unwrap().id()
             )
         );
@@ -550,6 +557,7 @@ impl TaskTree {
             self.get_node_mut(*desc_id).detach();
         }
         self.get_node_mut(id).detach();
+        self.update_ancestors_completion(next_selected);
         next_selected
     }
 
@@ -563,13 +571,14 @@ impl TaskTree {
     }
 
     fn update_ancestors_completion(&mut self, id: NodeId) {
-        let node = self.get_node(id);
-        let ancestors: Vec<NodeId> = node.ancestors().map(|node| node.id()).collect();
+        let ancestors: Vec<NodeId> = [id].into_iter().chain(self.get_node(id).ancestors().map(|node| node.id())).collect();
         for id in ancestors {
-            let all_children_completed = self.get_node(id)
-                .children()
-                .all(|child| child.value().completed);
-            self.get_node_mut(id).value().completed = all_children_completed;
+            if self.get_node(id).has_children() {
+                let all_children_completed = self.get_node(id)
+                    .children()
+                    .all(|child| child.value().completed);
+                self.get_node_mut(id).value().completed = all_children_completed;
+            }
         }
     }
 
