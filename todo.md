@@ -1,12 +1,4 @@
 # todo
-- [ ] small ux things
-    - [ ] move selection down after completing task?
-    - [ ] g / G
-    - [ ] manual save
-        - [ ] keybind
-        - [ ] config option
-        - [ ] ui indicator
-        - [ ] quit confirmation
 - [ ] scroll view
 - [ ] implement above/below as line index to NodeId conversion
 - [ ] color customization
@@ -14,6 +6,12 @@
     - [ ] partial config support
 - [ ] release
     - [ ] more config options
+        - [ ] move selection down after completing task
+        - [ ] manual save
+            - [ ] keybind
+            - [ ] config option
+            - [ ] ui indicator
+            - [ ] quit confirmation
         - [ ] fallback to global todo.md if local doesn't exist
         - [ ] check code for possible settings
     - [ ] proper error handling

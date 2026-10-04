@@ -103,6 +103,8 @@ pub enum Action {
     SelectionDown,
     SelectionPrev,
     SelectionNext,
+    SelectionFirst,
+    SelectionLast,
     SelectionOut,
     SelectionIn,
     MoveUp,
@@ -647,6 +649,16 @@ impl Tui {
             Action::SelectionNext => {
                 if let Some(parent) = self.tasks.get_next_sibling(self.selection) {
                     self.selection = parent;
+                }
+            },
+            Action::SelectionFirst => {
+                if let Some(id) = self.tasks.all_ids().first() {
+                    self.selection = *id;
+                }
+            },
+            Action::SelectionLast => {
+                if let Some(id) = self.tasks.all_ids().last() {
+                    self.selection = *id;
                 }
             },
             Action::SelectionIn => {
