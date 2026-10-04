@@ -3,7 +3,7 @@
 - [ ] small ux things
     - [ ] move selection down after completing task?
     - [ ] arrow keys
-    - [ ] gg / G
+    - [ ] g / G
     - [ ] manual save
         - [ ] keybind
         - [ ] config option

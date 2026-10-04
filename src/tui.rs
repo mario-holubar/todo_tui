@@ -215,9 +215,10 @@ impl Tui {
         self.input_mode = InputMode::EditTab;
     }
 
-    fn finish_tab_edit(&mut self, cancel: bool) {
+    fn finish_tab_edit(&mut self) -> bool {
         let name = self.text_input.value().trim();
-        if cancel || (name.is_empty() && self.tab_before_edit.is_some()) {
+        let confirmed = !name.is_empty();
+        if !confirmed {
             if let Some(original) = self.tab_before_edit.take() {
                 self.tabs[self.active_tab].name = original;
                 let tab = self.tabs.remove(self.active_tab);
@@ -238,11 +239,12 @@ impl Tui {
             self.pending_before_tab = None;
             self.state_changed = false;
         } else {
-            self.tabs[self.active_tab].name = if name.is_empty() { "todo".to_string() } else { name.to_string() };
+            self.tabs[self.active_tab].name = name.to_string();
             self.tab_before_edit = None;
             self.state_changed = true;
         }
         self.input_mode = InputMode::Normal;
+        confirmed
     }
 
     pub fn new() -> Tui {
@@ -303,7 +305,9 @@ impl Tui {
 
     fn ensure_task_for_edit(&mut self) {
         if self.tasks.is_root(self.selection) {
-            self.pending_before_selection_path = Some(Vec::new());
+            if self.pending_before_selection_path.is_none() {
+                self.pending_before_selection_path = Some(Vec::new());
+            }
             self.selection = self.tasks.add_top_level();
             self.state_changed = true;
         }
@@ -478,12 +482,28 @@ impl Tui {
                 .unwrap_or(Action::NoOp);
             let mut quit = false;
             match action {
-                Action::AddBelow => self.finish_tab_edit(false),
-                Action::EditDone => self.finish_tab_edit(true),
+                Action::AddBelow => {
+                    let added = self.tab_before_edit.is_none();
+                    if added && self.text_input.value().trim().is_empty() {
+                        self.text_input = Input::new("todo".to_string());
+                    }
+                    if self.finish_tab_edit() {
+                        self.selection = if self.tasks.is_root(self.selection) {
+                            self.tasks.add_top_level()
+                        } else {
+                            self.tasks.add_sibling_below(self.selection)
+                        };
+                        self.begin_editing();
+                        self.state_changed = true;
+                    }
+                }
+                Action::EditDone => {
+                    self.finish_tab_edit();
+                }
                 Action::MoveIn => self.move_tab(true),
                 Action::MoveOut => self.move_tab(false),
                 Action::Quit => {
-                    self.finish_tab_edit(false);
+                    self.finish_tab_edit();
                     quit = true;
                 }
                 _ => { self.text_input.handle_event(&Event::Key(key_event)); }
