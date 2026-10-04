@@ -181,12 +181,13 @@ impl Tui {
     }
 
     fn move_tab(&mut self, right: bool) {
-        let target = if right { self.active_tab + 1 } else { self.active_tab.saturating_sub(1) };
-        if target < self.tabs.len() && target != self.active_tab {
-            self.tabs.swap(self.active_tab, target);
-            self.active_tab = target;
-            self.state_changed = true;
-        }
+        let len = self.tabs.len();
+        if len < 2 { return; }
+        let target = if right { (self.active_tab + 1) % len } else { (self.active_tab + len - 1) % len };
+        let tab = self.tabs.remove(self.active_tab);
+        self.tabs.insert(target, tab);
+        self.active_tab = target;
+        self.state_changed = true;
     }
 
     fn restore_document(&mut self, content: &str, tab_index: usize, selection_path: &[usize]) {
