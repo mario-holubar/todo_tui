@@ -180,12 +180,24 @@ impl Tui {
     }
 
     fn copy_selection_to_clipboard(&mut self) {
+        if self.tasks.is_root(self.selection) {
+            return;
+        }
         let mut lines = Vec::new();
         self.tasks.serialize_node(&mut lines, self.tasks.get_node(self.selection), self.config.file_indent);
         self.clipboard = Some(lines.join("\n") + "\n");
     }
 
+    fn ensure_task_for_edit(&mut self) {
+        if self.tasks.is_root(self.selection) {
+            self.pending_before_selection_path = Some(Vec::new());
+            self.selection = self.tasks.add_top_level();
+            self.state_changed = true;
+        }
+    }
+
     fn begin_editing(&mut self) {
+        self.ensure_task_for_edit();
         self.text_input = take(&mut self.text_input)
             .with_value(self.tasks.get_task(self.selection).title.clone());
         self.input_mode = InputMode::Edit;
@@ -443,6 +455,7 @@ impl Tui {
                 self.begin_editing()
             },
             Action::EditBeginning => {
+                self.ensure_task_for_edit();
                 self.text_input = take(&mut self.text_input)
                     .with_value(self.tasks.get_task(self.selection).title.clone())
                     .with_cursor(0);

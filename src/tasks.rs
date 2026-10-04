@@ -164,6 +164,16 @@ impl TaskTree {
 
     fn insert_branch_at_sibling(&mut self, target_id: NodeId, branch_content: &str, after: bool, indent_width: usize) -> NodeId {
         let (branch_tree, _) = Self::from_string(branch_content, indent_width);
+        if self.is_root(target_id) {
+            let mut first_pasted_id = target_id;
+            for branch_child in branch_tree.tasks.root().children() {
+                let new_id = self.clone_subtree(branch_child, target_id, false);
+                if first_pasted_id == target_id {
+                    first_pasted_id = new_id;
+                }
+            }
+            return first_pasted_id;
+        }
         let parent_id = self.get_node(target_id).parent().unwrap().id();
 
         let mut first_pasted_id = target_id;
@@ -449,7 +459,7 @@ impl TaskTree {
         }
     }
 
-    fn is_root(&self, id: NodeId) -> bool {
+    pub fn is_root(&self, id: NodeId) -> bool {
         id == self.tasks.root().id()
     }
 
