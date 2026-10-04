@@ -1,11 +1,12 @@
 # todo
-- [ ] load config file at runtime
-    - [ ] partial config support
 - [ ] release
     - [ ] more config options
         - [ ] move selection down after completing task
         - [ ] fallback to global todo.md if local doesn't exist
-        - [ ] check code for possible settings
+        - [ ] (check code for more possible settings)
+    - [ ] load config file at runtime
+        - [ ] partial config support
     - [ ] proper error handling
     - [ ] nix install
+    - [ ] finish readme
     - [ ] video for readme
