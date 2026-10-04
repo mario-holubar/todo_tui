@@ -107,8 +107,8 @@ pub enum Action {
     SelectionLast,
     SelectionOut,
     SelectionIn,
-    MoveUp,
-    MoveDown,
+    // MoveUp,
+    // MoveDown,
     MovePrev,
     MoveNext,
     MoveOut,
@@ -670,12 +670,6 @@ impl Tui {
                 if let Some(parent) = self.tasks.get_parent_non_root(self.selection) {
                     self.selection = parent;
                 }
-            }
-            Action::MoveUp => {
-                todo!(); // TODO
-            }
-            Action::MoveDown => {
-                todo!(); // TODO
             }
             Action::MovePrev => {
                 if let Some(id) = self.tasks.switch_with_prev_sibling(self.selection) {

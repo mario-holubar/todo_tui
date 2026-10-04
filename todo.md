@@ -1,6 +1,5 @@
 # todo
 - [ ] scroll view
-- [ ] implement above/below as line index to NodeId conversion
 - [ ] color customization
 - [ ] load config file at runtime
     - [ ] partial config support
