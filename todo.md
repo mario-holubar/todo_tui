@@ -1,5 +1,4 @@
 # todo
-- [ ] scroll view
 - [ ] color customization
 - [ ] load config file at runtime
     - [ ] partial config support

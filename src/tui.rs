@@ -153,6 +153,7 @@ pub struct Tui {
     config: Config,
     tasks: TaskTree,
     selection: NodeId,
+    scroll_offset: usize,
     tabs: Vec<Tab>,
     active_tab: usize,
     tab_before_edit: Option<String>,
@@ -186,6 +187,7 @@ impl Tui {
         self.active_tab = index;
         swap(&mut self.tasks, &mut self.tabs[index].tasks);
         swap(&mut self.selection, &mut self.tabs[index].selection);
+        self.scroll_offset = 0;
     }
 
     fn move_tab(&mut self, right: bool) {
@@ -288,6 +290,7 @@ impl Tui {
             config,
             tasks,
             selection,
+            scroll_offset: 0,
             tabs,
             active_tab: 0,
             tab_before_edit: None,
@@ -836,8 +839,8 @@ impl Tui {
     fn cursor_position(&self) -> (u16, u16) {
         let all_ids = self.tasks.all_ids();
         let selected_idx = all_ids.iter().position(|&id| id == self.selection).unwrap_or(0);
-        // Row: 1 (title bar / top border) + selected task index
-        let row = 1 + selected_idx as u16;
+        // Row: 1 (title bar / top border) + selected task index in the viewport
+        let row = 1 + selected_idx.saturating_sub(self.scroll_offset) as u16;
         // Column: 1 (left border) + indent prefix + 1 (marker) + 1 (space after marker)
         let node = self.tasks.get_node(self.selection);
         let indent = node.ancestors().count() - 1;
@@ -852,11 +855,24 @@ impl Tui {
         ((2 + preceding + self.text_input.cursor()) as u16, 0)
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
         let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
         let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width, &self.search_query);
+        let visible_height = area.height.saturating_sub(2) as usize;
+        if visible_height == 0 || lines.len() <= visible_height {
+            self.scroll_offset = 0;
+        } else {
+            let selected_idx = self.tasks.all_ids().iter().position(|&id| id == self.selection).unwrap_or(0);
+            let scrolloff = usize::from(visible_height >= 3);
+            if selected_idx < self.scroll_offset + scrolloff {
+                self.scroll_offset = selected_idx.saturating_sub(scrolloff);
+            } else if selected_idx >= self.scroll_offset + visible_height - scrolloff {
+                self.scroll_offset = selected_idx + scrolloff + 1 - visible_height;
+            }
+            self.scroll_offset = self.scroll_offset.min(lines.len() + scrolloff - visible_height);
+        }
         let text = Text::from(lines);
         let titles: Vec<Span> = self.tabs.iter().enumerate().map(|(index, tab)| {
             let name = if index == self.active_tab && self.input_mode == InputMode::EditTab {
@@ -878,7 +894,7 @@ impl Tui {
             let prefix = if self.search_forward { '/' } else { '?' };
             block = block.title_bottom(format!("{}{}", prefix, self.search_query));
         }
-        let paragraph = Paragraph::new(text).block(block);
+        let paragraph = Paragraph::new(text).block(block).scroll((self.scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 
         // Draw date picker overlay if active
