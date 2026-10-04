@@ -199,6 +199,7 @@ impl Tui {
         title = title.trim().to_string();
         if title.is_empty() {
             self.selection = self.tasks.remove(self.selection);
+            self.state_changed = true;
         }
         else {
             self.tasks.set_title(self.selection, title);
@@ -244,12 +245,16 @@ impl Tui {
         self.input_mode = InputMode::Normal;
     }
 
-    fn update_date_picker(&mut self, key_event: KeyEvent) {
+    fn update_date_picker(&mut self, key_event: KeyEvent) -> bool {
         let action = self.config.date_picker_keymap.dispatch(key_event)
             .copied()
             .unwrap_or(Action::NoOp);
 
         match action {
+            Action::Quit => {
+                self.close_date_picker();
+                return true;
+            }
             Action::DatePickerConfirm => {
                 self.close_date_picker();
             }
@@ -304,6 +309,7 @@ impl Tui {
             Action::NoOp => {}
             _ => {} // Unhandled actions are ignored
         }
+        false
     }
 
     fn save_change(&mut self, previous_selection_path: Vec<usize>) {
@@ -338,9 +344,9 @@ impl Tui {
 
         // Handle date picker mode separately
         if self.input_mode == InputMode::DatePicker {
-            self.update_date_picker(key_event);
+            let should_quit = self.update_date_picker(key_event);
             self.save_change(prev_selection_path);
-            return false;
+            return should_quit;
         }
 
         // Resolve action from the appropriate keymap
