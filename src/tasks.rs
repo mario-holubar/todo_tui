@@ -263,9 +263,6 @@ impl TaskTree {
         } else if due_past_or_today {
             // (Over)due
             style.fg(Color::Red).bold()
-        } else if !is_ancestor_of_selected && !has_same_ancestry_as_selected {
-            // Other branch
-            style.fg(Color::Rgb(84, 84, 96))
         } else if start_future {
             // Not starting yet
             style.fg(Color::Yellow)
@@ -286,6 +283,11 @@ impl TaskTree {
             style.fg(Color::Rgb(140, 140, 160))
         };
         let style = if is_first_actionable { style.bold() } else { style };
+        let dim = if !is_ancestor_of_selected && !has_same_ancestry_as_selected {
+            Style::new().add_modifier(Modifier::DIM)
+        } else {
+            Style::new()
+        };
         // Background color
         let background = if is_selected {
             Style::new().bg(Color::Rgb(48, 48, 64))
@@ -294,7 +296,7 @@ impl TaskTree {
         } else {
             Style::new()
         };
-        let style = style.patch(background);
+        let style = style.patch(background).patch(dim);
 
         // Build individual date spans with their own styles
         let mut date_spans: Vec<Span> = vec![];
@@ -304,7 +306,7 @@ impl TaskTree {
                 Style::default().fg(Color::Rgb(56, 56, 64))
             } else {
                 Style::default().fg(Color::Rgb(140, 140, 160))
-            }.patch(background);
+            }.patch(background).patch(dim);
             date_spans.push(Span::styled(start_text, s));
         }
         if let Some(ref due) = task.due_date {
@@ -315,7 +317,7 @@ impl TaskTree {
                 Style::default().fg(Color::Rgb(56, 56, 64))
             } else {
                 Style::default().fg(Color::Yellow)
-            }.patch(background);
+            }.patch(background).patch(dim);
             // Add a separator if both dates are present
             if task.start_date.is_some() {
                 date_spans.push(Span::styled(" ", background));
