@@ -1,5 +1,5 @@
 # todo
-- [ ] color customization
+- [x] color customization
 - [ ] load config file at runtime
     - [ ] partial config support
 - [ ] release

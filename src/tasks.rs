@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use ratatui::{prelude::*, text::Line};
 use ego_tree::{NodeId, NodeMut, NodeRef, Tree};
+use crate::config::Colors;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Task {
@@ -226,7 +227,7 @@ impl TaskTree {
         self.insert_branch_at_sibling(id, content, false, indent_width)
     }
 
-    fn title_spans(spans: &mut Vec<Span<'static>>, prefix: &str, title: &str, style: Style, query: &str) {
+    fn title_spans(spans: &mut Vec<Span<'static>>, prefix: &str, title: &str, style: Style, query: &str, colors: &Colors) {
         spans.push(Span::styled(prefix.to_string(), style));
         if query.is_empty() {
             spans.push(Span::styled(title.to_string(), style));
@@ -235,13 +236,13 @@ impl TaskTree {
         let mut end = 0;
         for (index, matched) in title.match_indices(query) {
             spans.push(Span::styled(title[end..index].to_string(), style));
-            spans.push(Span::styled(matched.to_string(), style.fg(Color::Black).bg(Color::Yellow)));
+            spans.push(Span::styled(matched.to_string(), style.fg(colors.search_fg).bg(colors.search_bg)));
             end = index + matched.len();
         }
         spans.push(Span::styled(title[end..].to_string(), style));
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize, query: &str) {
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize, query: &str, colors: &Colors) {
         let indent = node.ancestors().count() - 1;
         let task = node.value();
         let is_first_actionable = self.is_first_actionable(node.id());
@@ -255,32 +256,32 @@ impl TaskTree {
         });
         let due_past_or_today = task.due_date.as_ref().and_then(|s| Task::is_date_past_or_today(s)).unwrap_or(false);
 
-        let style = Style::default();
+        let style = Style::default().fg(colors.text);
         // Text color
         let style = if task.completed {
             // Completed
-            style.fg(Color::Rgb(56, 56, 64))
+            style.fg(colors.completed)
         } else if due_past_or_today {
             // (Over)due
-            style.fg(Color::Red).bold()
+            style.fg(colors.overdue).bold()
         } else if start_future {
             // Not starting yet
-            style.fg(Color::Yellow)
+            style.fg(colors.upcoming)
         } else if any_ancestor_start_future {
             // Not starting yet (descendant)
-            style.fg(Color::Rgb(140, 140, 160))
+            style.fg(colors.muted)
         } else if node.first_child().is_some() && is_first_actionable {
             // Parent
             style
         } else if is_first_actionable {
             // First actionable
-            style.green()
+            style.fg(colors.actionable)
         } else if is_ancestor_of_selected {
             // Ancestor
             style
         } else {
             // Later
-            style.fg(Color::Rgb(140, 140, 160))
+            style.fg(colors.muted)
         };
         let style = if is_first_actionable { style.bold() } else { style };
         let dim = if !is_ancestor_of_selected && !has_same_ancestry_as_selected {
@@ -290,9 +291,9 @@ impl TaskTree {
         };
         // Background color
         let background = if is_selected {
-            Style::new().bg(Color::Rgb(48, 48, 64))
+            Style::new().bg(colors.selection_bg)
         } else if is_descendant_of_selected {
-            Style::new().bg(Color::Rgb(36, 36, 48))
+            Style::new().bg(colors.descendant_bg)
         } else {
             Style::new()
         };
@@ -303,20 +304,20 @@ impl TaskTree {
         if let Some(ref start) = task.start_date {
             let start_text = format!("start: {}", start);
             let s = if !start_future {
-                Style::default().fg(Color::Rgb(56, 56, 64))
+                Style::default().fg(colors.completed)
             } else {
-                Style::default().fg(Color::Rgb(140, 140, 160))
+                Style::default().fg(colors.muted)
             }.patch(background).patch(dim);
             date_spans.push(Span::styled(start_text, s));
         }
         if let Some(ref due) = task.due_date {
             let due_text = format!("due: {}", due);
             let s = if due_past_or_today {
-                Style::default().fg(Color::Red).bold()
+                Style::default().fg(colors.overdue).bold()
             } else if start_future {
-                Style::default().fg(Color::Rgb(56, 56, 64))
+                Style::default().fg(colors.completed)
             } else {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(colors.upcoming)
             }.patch(background).patch(dim);
             // Add a separator if both dates are present
             if task.start_date.is_some() {
@@ -343,14 +344,14 @@ impl TaskTree {
             // Right-justified dates with padding between title and dates
             let gap = remaining - date_width;
             let gap_fill = "\u{00A0}".repeat(gap);
-            Self::title_spans(&mut spans, &title_prefix, title, style, query);
+            Self::title_spans(&mut spans, &title_prefix, title, style, query, colors);
             spans.push(Span::styled(gap_fill, style));
             for ds in date_spans {
                 spans.push(ds);
             }
         } else {
             // No dates or not enough room — just the title
-            Self::title_spans(&mut spans, &title_prefix, title, style, query);
+            Self::title_spans(&mut spans, &title_prefix, title, style, query, colors);
             let fill_remaining = width.saturating_sub(title_width);
             if fill_remaining > 0 {
                 let fill = "\u{00A0}".repeat(fill_remaining);
@@ -361,14 +362,14 @@ impl TaskTree {
         lines.push(Line::from(spans));
 
         for child in node.children() {
-            self.display_node(lines, child, indent_width, selected_id, width, query);
+            self.display_node(lines, child, indent_width, selected_id, width, query, colors);
         }
     }
 
-    pub fn display(&self, indent_width: usize, selected_id: NodeId, width: usize, query: &str) -> Vec<Line<'_>> {
+    pub fn display(&self, indent_width: usize, selected_id: NodeId, width: usize, query: &str, colors: &Colors) -> Vec<Line<'_>> {
         let mut lines: Vec<Line> = Vec::new();
         for child in self.tasks.root().children() {
-            self.display_node(&mut lines, child, indent_width, selected_id, width, query);
+            self.display_node(&mut lines, child, indent_width, selected_id, width, query, colors);
         }
         lines
     }

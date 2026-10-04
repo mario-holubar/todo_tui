@@ -3,6 +3,23 @@ todo_file = "todo.md" # Can be absolute or relative path
 file_indent = 4       # Number of spaces per indent in todo.md
 display_indent = 2     # Number of spaces per indent to render in the app
 
+[colors] # Named colors, terminal palette indices ("0"-"255"), or "#RRGGBB"
+text = "Reset"
+background = "Reset"
+completed = "#383840"
+overdue = "Red"
+upcoming = "Yellow"
+muted = "#8C8CA0"
+actionable = "Green"
+selection_bg = "#303040"
+descendant_bg = "#242430"
+search_fg = "Black"
+search_bg = "Yellow"
+active_tab_fg = "Black"
+active_tab_bg = "White"
+inactive_tab = "#8C8CA0"
+calendar_selection_bg = "#24242A"
+
 [normal_keymap]
 "Ctrl+d" = "Quit"
 "Ctrl+c" = "Quit"

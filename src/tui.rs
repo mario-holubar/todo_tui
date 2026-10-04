@@ -9,7 +9,7 @@ use ratatui::{
     },
     layout::{Constraint, Layout as RatatuiLayout, Rect},
     text::Span,
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 use ratatui::widgets::calendar::{CalendarEventStore, Monthly};
 use ego_tree::NodeId;
@@ -859,7 +859,7 @@ impl Tui {
         let area = frame.area();
 
         let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
-        let lines = self.tasks.display(self.config.general.display_indent, self.selection, inner_width, &self.search_query);
+        let lines = self.tasks.display(self.config.general.display_indent, self.selection, inner_width, &self.search_query, &self.config.colors);
         let visible_height = area.height.saturating_sub(2) as usize;
         if visible_height == 0 || lines.len() <= visible_height {
             self.scroll_offset = 0;
@@ -881,9 +881,9 @@ impl Tui {
                 &tab.name
             };
             let style = if index == self.active_tab {
-                Style::default().fg(Color::Black).bg(Color::White).bold()
+                Style::default().fg(self.config.colors.active_tab_fg).bg(self.config.colors.active_tab_bg).bold()
             } else {
-                Style::default().fg(Color::Rgb(140, 140, 160))
+                Style::default().fg(self.config.colors.inactive_tab)
             };
             Span::styled(format!(" {} ", name), style)
         }).collect();
@@ -894,7 +894,10 @@ impl Tui {
             let prefix = if self.search_forward { '/' } else { '?' };
             block = block.title_bottom(format!("{}{}", prefix, self.search_query));
         }
-        let paragraph = Paragraph::new(text).block(block).scroll((self.scroll_offset as u16, 0));
+        let paragraph = Paragraph::new(text)
+            .style(Style::default().fg(self.config.colors.text).bg(self.config.colors.background))
+            .block(block)
+            .scroll((self.scroll_offset as u16, 0));
         frame.render_widget(paragraph, area);
 
         // Draw date picker overlay if active
@@ -929,16 +932,21 @@ impl Tui {
 
         // Build event store: highlight cursor date and today
         let mut events = CalendarEventStore::default();
-        events.add(picker.cursor_date, Style::default().bg(Color::Rgb(36, 36, 42)).bold());
+        events.add(picker.cursor_date, Style::default().bg(self.config.colors.calendar_selection_bg).bold());
 
+        let base_style = Style::default().fg(self.config.colors.text).bg(self.config.colors.background);
         let calendar = Monthly::new(picker.display_date, events)
-            .show_month_header(Style::default().bold())
-            .show_weekdays_header(Style::default().fg(Color::Rgb(140, 140, 160)))
+            .default_style(base_style)
+            .show_month_header(Style::default().fg(self.config.colors.text).bold())
+            .show_weekdays_header(Style::default().fg(self.config.colors.muted))
             .block(
                 Block::bordered()
-                    .title(Span::styled(title, Style::default().bold())),
+                    .style(base_style)
+                    .title(Span::styled(title, Style::default().fg(self.config.colors.text).bold())),
             );
 
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(Block::default().style(base_style), popup_area);
         frame.render_widget(calendar, popup_area);
     }
 
