@@ -1,4 +1,4 @@
-use std::{error::Error, fs, mem::take};
+use std::{error::Error, fs, mem::{take, swap}};
 
 use ratatui::{
     prelude::*,
@@ -17,12 +17,14 @@ use tui_input::{backend::crossterm::EventHandler, Input};
 use time::{Date, Month, OffsetDateTime};
 
 use crate::config::Config;
+use crate::document::{self, Tab};
 use crate::tasks::*;
 
 #[derive(Debug, PartialEq)]
 pub enum InputMode {
     Normal,
     Edit,
+    EditTab,
     DatePicker,
 }
 
@@ -39,6 +41,8 @@ struct HistoryEntry {
     after_content: String,
     before_selection_path: Vec<usize>,
     after_selection_path: Vec<usize>,
+    before_tab: usize,
+    after_tab: usize,
 }
 
 impl DatePickerState {
@@ -118,6 +122,10 @@ pub enum Action {
     EditBeginning,
     EditClear,
     EditDone,
+    TabNext,
+    TabPrev,
+    TabRename,
+    TabAdd,
     SetStartDate,
     SetDueDate,
     DatePickerConfirm,
@@ -139,6 +147,10 @@ pub struct Tui {
     config: Config,
     tasks: TaskTree,
     selection: NodeId,
+    tabs: Vec<Tab>,
+    active_tab: usize,
+    tab_before_edit: Option<String>,
+    tab_edit_previous: usize,
     text_input: Input,
     clipboard: Option<String>,
     date_picker: Option<DatePickerState>,
@@ -147,27 +159,127 @@ pub struct Tui {
     undo_stack: Vec<HistoryEntry>,
     redo_stack: Vec<HistoryEntry>,
     pending_before_selection_path: Option<Vec<usize>>,
+    pending_before_tab: Option<usize>,
 }
 
 impl Tui {
+    fn serialize(&self) -> String {
+        self.tabs.iter().enumerate().map(|(index, tab)| {
+            let tasks = if index == self.active_tab { &self.tasks } else { &tab.tasks };
+            document::serialize_section(&tab.name, tasks, self.config.file_indent)
+        }).collect::<Vec<_>>().join("\n")
+    }
+
+    fn switch_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() || index == self.active_tab { return; }
+        swap(&mut self.tasks, &mut self.tabs[self.active_tab].tasks);
+        swap(&mut self.selection, &mut self.tabs[self.active_tab].selection);
+        self.active_tab = index;
+        swap(&mut self.tasks, &mut self.tabs[index].tasks);
+        swap(&mut self.selection, &mut self.tabs[index].selection);
+    }
+
+    fn move_tab(&mut self, right: bool) {
+        let target = if right { self.active_tab + 1 } else { self.active_tab.saturating_sub(1) };
+        if target < self.tabs.len() && target != self.active_tab {
+            self.tabs.swap(self.active_tab, target);
+            self.active_tab = target;
+            self.state_changed = true;
+        }
+    }
+
+    fn restore_document(&mut self, content: &str, tab_index: usize, selection_path: &[usize]) {
+        self.tabs = document::parse(content, self.config.file_indent);
+        self.active_tab = 0;
+        let first = self.tabs.remove(0);
+        self.selection = first.selection;
+        self.tasks = first.tasks;
+        self.tabs.insert(0, Tab::new(first.name, self.config.file_indent));
+        self.switch_tab(tab_index.min(self.tabs.len() - 1));
+        self.selection = self.tasks.resolve_path(selection_path).unwrap_or(self.selection);
+    }
+
+    fn start_tab_edit(&mut self, added: bool) {
+        self.tab_edit_previous = self.active_tab;
+        if added {
+            let index = self.active_tab + 1;
+            self.tabs.insert(index, Tab::new("todo".to_string(), self.config.file_indent));
+            self.switch_tab(index);
+            self.tab_before_edit = None;
+            self.text_input = Input::new(String::new());
+        } else {
+            let name = self.tabs[self.active_tab].name.clone();
+            self.tab_before_edit = Some(name.clone());
+            self.text_input = Input::new(name);
+        }
+        self.input_mode = InputMode::EditTab;
+    }
+
+    fn finish_tab_edit(&mut self, cancel: bool) {
+        let name = self.text_input.value().trim();
+        if cancel || (name.is_empty() && self.tab_before_edit.is_some()) {
+            if let Some(original) = self.tab_before_edit.take() {
+                self.tabs[self.active_tab].name = original;
+                let tab = self.tabs.remove(self.active_tab);
+                self.tabs.insert(self.tab_edit_previous, tab);
+                self.active_tab = self.tab_edit_previous;
+            } else {
+                let added = self.active_tab;
+                let previous = if added <= self.tab_edit_previous {
+                    self.tab_edit_previous + 1
+                } else {
+                    self.tab_edit_previous
+                };
+                self.switch_tab(previous);
+                self.tabs.remove(added);
+                if added < self.active_tab { self.active_tab -= 1; }
+            }
+            self.pending_before_selection_path = None;
+            self.pending_before_tab = None;
+            self.state_changed = false;
+        } else {
+            self.tabs[self.active_tab].name = if name.is_empty() { "todo".to_string() } else { name.to_string() };
+            self.tab_before_edit = None;
+            self.state_changed = true;
+        }
+        self.input_mode = InputMode::Normal;
+    }
+
     pub fn new() -> Tui {
         let config = Config::load().unwrap();
 
         // Read the todo file
         let content = match fs::read_to_string(&config.todo_file) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "\n".to_string(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let initial = "# todo\n";
+                fs::write(&config.todo_file, initial).unwrap();
+                initial.to_string()
+            }
             Err(e) => panic!("Failed to read todo file: {e}"),
         };
-        // Parse it into Tasks
-        let (tasks, selection) = TaskTree::from_string(&content, config.file_indent);
-        // Verify with a round trip test
-        assert_eq!(content, tasks.to_string(config.file_indent));
+        let mut tabs = document::parse(&content, config.file_indent);
+        let active = tabs.remove(0);
+        let tasks = active.tasks;
+        let selection = active.selection;
+        tabs.insert(0, Tab::new(active.name, config.file_indent));
+        let serialized = document::serialize(&document::parse(&content, config.file_indent), config.file_indent);
+        let expected = if content.lines().any(|line| line.starts_with("# ")) {
+            content.clone()
+        } else {
+            format!("# todo\n{content}")
+        };
+        let meaningful_lines = |s: &str| s.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>().join("\n");
+        assert_eq!(meaningful_lines(&expected), meaningful_lines(&serialized));
 
         Tui {
             config,
             tasks,
             selection,
+            tabs,
+            active_tab: 0,
+            tab_before_edit: None,
+            tab_edit_previous: 0,
             text_input: Input::new(String::new()),
             clipboard: None,
             date_picker: None,
@@ -176,6 +288,7 @@ impl Tui {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             pending_before_selection_path: None,
+            pending_before_tab: None,
         }
     }
 
@@ -324,28 +437,32 @@ impl Tui {
         false
     }
 
-    fn save_change(&mut self, previous_selection_path: Vec<usize>) {
+    fn save_change(&mut self, previous_selection_path: Vec<usize>, previous_tab: usize) {
         if self.input_mode != InputMode::Normal || !self.state_changed {
             return;
         }
 
         let before_content = fs::read_to_string(&self.config.todo_file).unwrap_or_default();
-        let after_content = self.tasks.to_string(self.config.file_indent);
+        let after_content = self.serialize();
         if before_content != after_content {
             let before_selection_path = self.pending_before_selection_path
                 .take()
                 .unwrap_or(previous_selection_path);
+            let before_tab = self.pending_before_tab.take().unwrap_or(previous_tab);
             let after_selection_path = self.tasks.node_to_path(self.selection);
             self.undo_stack.push(HistoryEntry {
                 before_content,
                 after_content: after_content.clone(),
                 before_selection_path,
                 after_selection_path,
+                before_tab,
+                after_tab: self.active_tab,
             });
             self.redo_stack.clear();
             fs::write(&self.config.todo_file, after_content).unwrap();
         } else {
             self.pending_before_selection_path = None;
+            self.pending_before_tab = None;
         }
         self.state_changed = false;
     }
@@ -353,11 +470,32 @@ impl Tui {
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
         let prev_selection_path = self.tasks.node_to_path(self.selection);
+        let prev_tab = self.active_tab;
+
+        if self.input_mode == InputMode::EditTab {
+            let action = self.config.text_keymap.dispatch(key_event)
+                .copied()
+                .unwrap_or(Action::NoOp);
+            let mut quit = false;
+            match action {
+                Action::AddBelow => self.finish_tab_edit(false),
+                Action::EditDone => self.finish_tab_edit(true),
+                Action::MoveIn => self.move_tab(true),
+                Action::MoveOut => self.move_tab(false),
+                Action::Quit => {
+                    self.finish_tab_edit(false);
+                    quit = true;
+                }
+                _ => { self.text_input.handle_event(&Event::Key(key_event)); }
+            }
+            self.save_change(prev_selection_path, prev_tab);
+            return quit;
+        }
 
         // Handle date picker mode separately
         if self.input_mode == InputMode::DatePicker {
             let should_quit = self.update_date_picker(key_event);
-            self.save_change(prev_selection_path);
+            self.save_change(prev_selection_path, prev_tab);
             return should_quit;
         }
 
@@ -365,6 +503,7 @@ impl Tui {
         let action = match self.input_mode {
             InputMode::Edit => self.config.text_keymap.dispatch(key_event),
             InputMode::Normal => self.config.normal_keymap.dispatch(key_event),
+            InputMode::EditTab => unreachable!(),
             InputMode::DatePicker => unreachable!(),
         }.copied()
         .unwrap_or(Action::NoOp);
@@ -468,6 +607,22 @@ impl Tui {
             Action::EditDone => {
                 self.finish_editing();
             }
+            Action::TabPrev => {
+                if self.active_tab > 0 { self.switch_tab(self.active_tab - 1); }
+            }
+            Action::TabNext => {
+                self.switch_tab(self.active_tab + 1);
+            }
+            Action::TabRename => {
+                self.pending_before_selection_path = Some(prev_selection_path.clone());
+                self.pending_before_tab = Some(prev_tab);
+                self.start_tab_edit(false);
+            }
+            Action::TabAdd => {
+                self.pending_before_selection_path = Some(prev_selection_path.clone());
+                self.pending_before_tab = Some(prev_tab);
+                self.start_tab_edit(true);
+            }
             Action::SetStartDate => {
                 self.open_date_picker(true);
             }
@@ -516,18 +671,14 @@ impl Tui {
             }
             Action::Undo => {
                 if let Some(entry) = self.undo_stack.pop() {
-                    let (tasks, default_selection) = TaskTree::from_string(&entry.before_content, self.config.file_indent);
-                    self.selection = tasks.resolve_path(&entry.before_selection_path).unwrap_or(default_selection);
-                    self.tasks = tasks;
+                    self.restore_document(&entry.before_content, entry.before_tab, &entry.before_selection_path);
                     fs::write(&self.config.todo_file, &entry.before_content).unwrap();
                     self.redo_stack.push(entry);
                 }
             }
             Action::Redo => {
                 if let Some(entry) = self.redo_stack.pop() {
-                    let (tasks, default_selection) = TaskTree::from_string(&entry.after_content, self.config.file_indent);
-                    self.selection = tasks.resolve_path(&entry.after_selection_path).unwrap_or(default_selection);
-                    self.tasks = tasks;
+                    self.restore_document(&entry.after_content, entry.after_tab, &entry.after_selection_path);
                     fs::write(&self.config.todo_file, &entry.after_content).unwrap();
                     self.undo_stack.push(entry);
                 }
@@ -547,7 +698,7 @@ impl Tui {
             Action::NoOp => {}
         }
 
-        self.save_change(prev_selection_path);
+        self.save_change(prev_selection_path, prev_tab);
 
         should_quit
     }
@@ -565,16 +716,35 @@ impl Tui {
         (col, row)
     }
 
+    fn tab_cursor_position(&self) -> (u16, u16) {
+        let preceding: usize = self.tabs.iter().take(self.active_tab)
+            .map(|tab| tab.name.chars().count() + 2).sum();
+        ((2 + preceding + self.text_input.cursor()) as u16, 0)
+    }
+
     fn draw(&self, frame: &mut Frame) {
         let area = frame.area();
 
-        let inner_width = (area.width - 2) as usize; // subtract borders
+        let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
         let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width);
         let text = Text::from(lines);
+        let titles: Vec<Span> = self.tabs.iter().enumerate().map(|(index, tab)| {
+            let name = if index == self.active_tab && self.input_mode == InputMode::EditTab {
+                self.text_input.value()
+            } else {
+                &tab.name
+            };
+            let style = if index == self.active_tab {
+                Style::default().fg(Color::Black).bg(Color::White).bold()
+            } else {
+                Style::default().fg(Color::Rgb(140, 140, 160))
+            };
+            Span::styled(format!(" {} ", name), style)
+        }).collect();
         let paragraph = Paragraph::new(text).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(format!(" {} ", self.config.todo_file)),
+                .title(Line::from(titles)),
         );
         frame.render_widget(paragraph, area);
 
@@ -638,8 +808,12 @@ impl Tui {
                 }
                 terminal.draw(|frame| self.draw(frame))?;
 
-                if self.input_mode == InputMode::Edit {
-                    let (col, row) = self.cursor_position();
+                if matches!(self.input_mode, InputMode::Edit | InputMode::EditTab) {
+                    let (col, row) = if self.input_mode == InputMode::EditTab {
+                        self.tab_cursor_position()
+                    } else {
+                        self.cursor_position()
+                    };
                     use std::io::stdout;
                     execute!(stdout(), MoveTo(col, row))?;
                     terminal.show_cursor()?;

@@ -1,4 +1,5 @@
 mod config;
+mod document;
 mod tasks;
 mod tui;
 

@@ -1,5 +1,5 @@
+# todo
 - [ ] search
-- [ ] headers as tabs
 - [ ] small ux things
     - [ ] move selection down after completing task?
     - [ ] arrow keys
@@ -9,6 +9,7 @@
         - [ ] config option
         - [ ] ui indicator
         - [ ] quit confirmation
+- [ ] scroll view
 - [ ] implement above/below as line index to NodeId conversion
 - [ ] color customization
 - [ ] load config file at runtime
