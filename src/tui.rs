@@ -650,9 +650,22 @@ impl Tui {
                 self.state_changed = true;
             }
             Action::Delete => {
-                self.copy_selection_to_clipboard();
-                self.selection = self.tasks.remove(self.selection);
-                self.state_changed = true;
+                if self.tasks.is_root(self.selection) && self.tasks.all_ids().is_empty() {
+                    if self.tabs.len() == 1 {
+                        fs::remove_file(&self.config.todo_file).unwrap();
+                        return true;
+                    }
+                    let deleted = self.active_tab;
+                    let next = if deleted + 1 < self.tabs.len() { deleted + 1 } else { deleted - 1 };
+                    self.switch_tab(next);
+                    self.tabs.remove(deleted);
+                    if deleted < self.active_tab { self.active_tab -= 1; }
+                    self.state_changed = true;
+                } else {
+                    self.copy_selection_to_clipboard();
+                    self.selection = self.tasks.remove(self.selection);
+                    self.state_changed = true;
+                }
             }
             Action::Copy => {
                 self.copy_selection_to_clipboard();
