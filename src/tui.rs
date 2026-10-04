@@ -485,13 +485,13 @@ impl Tui {
             }
             Action::PasteBelow => {
                 if let Some(ref content) = self.clipboard {
-                    self.selection = self.tasks.paste_branch_below(self.selection, content);
+                    self.selection = self.tasks.paste_branch_below(self.selection, content, self.config.file_indent);
                     self.state_changed = true;
                 }
             }
             Action::PasteAbove => {
                 if let Some(ref content) = self.clipboard {
-                    self.selection = self.tasks.paste_branch_above(self.selection, content);
+                    self.selection = self.tasks.paste_branch_above(self.selection, content, self.config.file_indent);
                     self.state_changed = true;
                 }
             }

@@ -162,8 +162,8 @@ impl TaskTree {
         lines.join("\n") + "\n"
     }
 
-    fn insert_branch_at_sibling(&mut self, target_id: NodeId, branch_content: &str, after: bool) -> NodeId {
-        let (branch_tree, _) = Self::from_string(branch_content, 4);
+    fn insert_branch_at_sibling(&mut self, target_id: NodeId, branch_content: &str, after: bool, indent_width: usize) -> NodeId {
+        let (branch_tree, _) = Self::from_string(branch_content, indent_width);
         let parent_id = self.get_node(target_id).parent().unwrap().id();
 
         let mut first_pasted_id = target_id;
@@ -200,12 +200,12 @@ impl TaskTree {
         new_id
     }
 
-    pub fn paste_branch_below(&mut self, id: NodeId, content: &str) -> NodeId {
-        self.insert_branch_at_sibling(id, content, true)
+    pub fn paste_branch_below(&mut self, id: NodeId, content: &str, indent_width: usize) -> NodeId {
+        self.insert_branch_at_sibling(id, content, true, indent_width)
     }
 
-    pub fn paste_branch_above(&mut self, id: NodeId, content: &str) -> NodeId {
-        self.insert_branch_at_sibling(id, content, false)
+    pub fn paste_branch_above(&mut self, id: NodeId, content: &str, indent_width: usize) -> NodeId {
+        self.insert_branch_at_sibling(id, content, false, indent_width)
     }
 
     pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize) {
