@@ -1,7 +1,6 @@
 # todo
 - [ ] small ux things
     - [ ] move selection down after completing task?
-    - [ ] arrow keys
     - [ ] g / G
     - [ ] manual save
         - [ ] keybind
