@@ -880,7 +880,9 @@ impl Tui {
             } else {
                 &tab.name
             };
-            let style = if index == self.active_tab {
+            let style = if index == self.active_tab && self.input_mode == InputMode::EditTab {
+                Style::default().fg(self.config.colors.active_tab_bg).bg(self.config.colors.active_tab_fg).bold()
+            } else if index == self.active_tab {
                 Style::default().fg(self.config.colors.active_tab_fg).bg(self.config.colors.active_tab_bg).bold()
             } else {
                 Style::default().fg(self.config.colors.inactive_tab)
