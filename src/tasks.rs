@@ -167,10 +167,14 @@ impl TaskTree {
         let parent_id = self.get_node(target_id).parent().unwrap().id();
 
         let mut first_pasted_id = target_id;
+        let mut branch_children: Vec<_> = branch_tree.tasks.root().children().collect();
+        if after {
+            branch_children.reverse();
+        }
 
-        for branch_child in branch_tree.tasks.root().children() {
-            let new_id = self.clone_subtree(&branch_tree, branch_child, parent_id);
-            if first_pasted_id == target_id {
+        for branch_child in branch_children {
+            let new_id = self.clone_subtree(branch_child, parent_id, true);
+            if after || first_pasted_id == target_id {
                 first_pasted_id = new_id;
             }
 
@@ -189,12 +193,16 @@ impl TaskTree {
         first_pasted_id
     }
 
-    fn clone_subtree(&mut self, _source: &TaskTree, node: NodeRef<'_, Task>, parent_id: NodeId) -> NodeId {
+    fn clone_subtree(&mut self, node: NodeRef<'_, Task>, parent_id: NodeId, prepend: bool) -> NodeId {
         let task = (*node.value()).clone();
-        let new_id = self.get_node_mut(parent_id).prepend(task).id();
+        let new_id = if prepend {
+            self.get_node_mut(parent_id).prepend(task).id()
+        } else {
+            self.get_node_mut(parent_id).append(task).id()
+        };
 
         for child in node.children() {
-            self.clone_subtree(_source, child, new_id);
+            self.clone_subtree(child, new_id, false);
         }
 
         new_id
