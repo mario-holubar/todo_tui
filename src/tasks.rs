@@ -486,10 +486,7 @@ impl TaskTree {
 
     pub fn move_in(&mut self, id: NodeId) -> Option<NodeId> {
         if self.is_root(id) { return None; }
-        let prev_sibling = self.get_node(id).prev_sibling();
-        let target_parent = prev_sibling.map(|s| s.id())
-            .or_else(|| self.get_parent_non_root(id));
-        let target_parent = target_parent?;
+        let target_parent = self.get_node(id).prev_sibling()?.id();
         // Detach the node from its current parent
         self.get_node_mut(id).detach();
         // Append as last child of target parent
