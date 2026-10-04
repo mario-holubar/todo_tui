@@ -9,7 +9,7 @@ use ratatui::{
     },
     layout::{Constraint, Layout as RatatuiLayout, Rect},
     text::Span,
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 use ratatui::widgets::calendar::{CalendarEventStore, Monthly};
 use ego_tree::NodeId;
@@ -961,6 +961,7 @@ impl Tui {
         }).collect();
         let mut block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(self.config.colors.border))
             .title(Line::from(titles));
         if unsaved {
@@ -992,7 +993,7 @@ impl Tui {
             let dialog = Paragraph::new("Save changes before quitting?\n[S] Save  [D] Discard  [Esc] Cancel")
                 .style(Style::default().fg(self.config.colors.text).bg(self.config.colors.background))
                 .alignment(Alignment::Center)
-                .block(Block::bordered().border_style(Style::default().fg(self.config.colors.border)));
+                .block(Block::bordered().border_type(BorderType::Rounded).border_style(Style::default().fg(self.config.colors.border)));
             frame.render_widget(Clear, popup_area);
             frame.render_widget(dialog, popup_area);
         }
@@ -1033,6 +1034,7 @@ impl Tui {
             .show_weekdays_header(Style::default().fg(self.config.colors.muted))
             .block(
                 Block::bordered()
+                    .border_type(BorderType::Rounded)
                     .style(base_style)
                     .border_style(Style::default().fg(self.config.colors.border))
                     .title(Span::styled(title, Style::default().fg(self.config.colors.text).bold())),
