@@ -27,6 +27,7 @@ pub enum InputMode {
     EditTab,
     DatePicker,
     Search,
+    QuitConfirm,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -170,6 +171,8 @@ pub struct Tui {
     redo_stack: Vec<HistoryEntry>,
     pending_before_selection_path: Option<Vec<usize>>,
     pending_before_tab: Option<usize>,
+    history_content: String,
+    saved_content: String,
 }
 
 impl Tui {
@@ -307,6 +310,8 @@ impl Tui {
             redo_stack: Vec::new(),
             pending_before_selection_path: None,
             pending_before_tab: None,
+            history_content: content.clone(),
+            saved_content: content,
         }
     }
 
@@ -353,10 +358,10 @@ impl Tui {
     }
 
     fn cancel_editing(&mut self) {
-        let content = fs::read_to_string(&self.config.general.todo_file).unwrap_or_default();
         let tab = self.pending_before_tab.take().unwrap_or(self.active_tab);
         let path = self.pending_before_selection_path.take()
             .unwrap_or_else(|| self.tasks.node_to_path(self.selection));
+        let content = self.history_content.clone();
         self.restore_document(&content, tab, &path);
         self.state_changed = false;
         self.input_mode = InputMode::Normal;
@@ -472,7 +477,7 @@ impl Tui {
             return;
         }
 
-        let before_content = fs::read_to_string(&self.config.general.todo_file).unwrap_or_default();
+        let before_content = self.history_content.clone();
         let after_content = self.serialize();
         if before_content != after_content {
             let before_selection_path = self.pending_before_selection_path
@@ -489,12 +494,40 @@ impl Tui {
                 after_tab: self.active_tab,
             });
             self.redo_stack.clear();
-            fs::write(&self.config.general.todo_file, after_content).unwrap();
+            self.history_content = after_content;
+            if self.config.general.autosave {
+                self.save_to_disk();
+            }
         } else {
             self.pending_before_selection_path = None;
             self.pending_before_tab = None;
         }
         self.state_changed = false;
+    }
+
+    fn save_to_disk(&mut self) {
+        fs::write(&self.config.general.todo_file, &self.history_content).unwrap();
+        self.saved_content = self.history_content.clone();
+    }
+
+    fn has_unsaved_changes(&self) -> bool {
+        let editing_changed = match self.input_mode {
+            InputMode::Edit => self.serialize() != self.history_content,
+            InputMode::EditTab => self.serialize() != self.history_content
+                || self.text_input.value() != self.tabs[self.active_tab].name,
+            _ => false,
+        };
+        !self.config.general.autosave
+            && (self.history_content != self.saved_content || editing_changed)
+    }
+
+    fn request_quit(&mut self) -> bool {
+        if self.has_unsaved_changes() {
+            self.input_mode = InputMode::QuitConfirm;
+            false
+        } else {
+            true
+        }
     }
 
     fn search_next(&mut self, from: NodeId, forward: bool) {
@@ -549,6 +582,36 @@ impl Tui {
 
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
+        if self.input_mode == InputMode::QuitConfirm {
+            match key_event.code {
+                KeyCode::Char('s' | 'S') => {
+                    self.save_to_disk();
+                    return true;
+                }
+                KeyCode::Char('d' | 'D') => return true,
+                KeyCode::Esc | KeyCode::Char('c' | 'C') => {
+                    self.input_mode = InputMode::Normal;
+                }
+                _ => {}
+            }
+            return false;
+        }
+
+        if key_event.code == KeyCode::Char('s') && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+            let prev_selection_path = self.tasks.node_to_path(self.selection);
+            let prev_tab = self.active_tab;
+            match self.input_mode {
+                InputMode::Edit => self.finish_editing(),
+                InputMode::EditTab => { self.finish_tab_edit(false); }
+                _ => {}
+            }
+            self.save_change(prev_selection_path, prev_tab);
+            if self.history_content != self.saved_content {
+                self.save_to_disk();
+            }
+            return false;
+        }
+
         if self.input_mode == InputMode::Search {
             self.update_search(key_event);
             return false;
@@ -592,14 +655,14 @@ impl Tui {
                 _ => { self.text_input.handle_event(&Event::Key(key_event)); }
             }
             self.save_change(prev_selection_path, prev_tab);
-            return quit;
+            return quit && self.request_quit();
         }
 
         // Handle date picker mode separately
         if self.input_mode == InputMode::DatePicker {
             let should_quit = self.update_date_picker(key_event);
             self.save_change(prev_selection_path, prev_tab);
-            return should_quit;
+            return should_quit && self.request_quit();
         }
 
         // Resolve action from the appropriate keymap
@@ -609,6 +672,7 @@ impl Tui {
             InputMode::EditTab => unreachable!(),
             InputMode::DatePicker => unreachable!(),
             InputMode::Search => unreachable!(),
+            InputMode::QuitConfirm => unreachable!(),
         }.copied()
         .unwrap_or(Action::NoOp);
 
@@ -765,8 +829,11 @@ impl Tui {
             Action::Delete => {
                 if self.tasks.is_root(self.selection) && self.tasks.all_ids().is_empty() {
                     if self.tabs.len() == 1 {
-                        fs::remove_file(&self.config.general.todo_file).unwrap();
-                        return true;
+                        if self.config.general.autosave {
+                            fs::remove_file(&self.config.general.todo_file).unwrap();
+                            return true;
+                        }
+                        return self.request_quit();
                     }
                     let deleted = self.active_tab;
                     let next = if deleted + 1 < self.tabs.len() { deleted + 1 } else { deleted - 1 };
@@ -798,14 +865,16 @@ impl Tui {
             Action::Undo => {
                 if let Some(entry) = self.undo_stack.pop() {
                     self.restore_document(&entry.before_content, entry.before_tab, &entry.before_selection_path);
-                    fs::write(&self.config.general.todo_file, &entry.before_content).unwrap();
+                    self.history_content = entry.before_content.clone();
+                    if self.config.general.autosave { self.save_to_disk(); }
                     self.redo_stack.push(entry);
                 }
             }
             Action::Redo => {
                 if let Some(entry) = self.redo_stack.pop() {
                     self.restore_document(&entry.after_content, entry.after_tab, &entry.after_selection_path);
-                    fs::write(&self.config.general.todo_file, &entry.after_content).unwrap();
+                    self.history_content = entry.after_content.clone();
+                    if self.config.general.autosave { self.save_to_disk(); }
                     self.undo_stack.push(entry);
                 }
             }
@@ -833,7 +902,7 @@ impl Tui {
 
         self.save_change(prev_selection_path, prev_tab);
 
-        should_quit
+        should_quit && self.request_quit()
     }
 
     fn cursor_position(&self) -> (u16, u16) {
@@ -874,6 +943,7 @@ impl Tui {
             self.scroll_offset = self.scroll_offset.min(lines.len() + scrolloff - visible_height);
         }
         let text = Text::from(lines);
+        let unsaved = self.has_unsaved_changes();
         let titles: Vec<Span> = self.tabs.iter().enumerate().map(|(index, tab)| {
             let name = if index == self.active_tab && self.input_mode == InputMode::EditTab {
                 self.text_input.value()
@@ -892,6 +962,9 @@ impl Tui {
         let mut block = Block::default()
             .borders(Borders::ALL)
             .title(Line::from(titles));
+        if unsaved {
+            block = block.title_top(Line::from(Span::styled(" * ", Style::default().fg(self.config.colors.upcoming))).right_aligned());
+        }
         if self.input_mode == InputMode::Search {
             let prefix = if self.search_forward { '/' } else { '?' };
             block = block.title_bottom(format!("{}{}", prefix, self.search_query));
@@ -905,6 +978,22 @@ impl Tui {
         // Draw date picker overlay if active
         if let Some(ref picker) = self.date_picker {
             self.draw_date_picker(frame, area, picker);
+        }
+        if self.input_mode == InputMode::QuitConfirm {
+            let width = 39.min(area.width);
+            let height = 4.min(area.height);
+            let popup_area = Rect::new(
+                area.x + (area.width - width) / 2,
+                area.y + (area.height - height) / 2,
+                width,
+                height,
+            );
+            let dialog = Paragraph::new("Save changes before quitting?\n[S] Save  [D] Discard  [Esc] Cancel")
+                .style(Style::default().fg(self.config.colors.text).bg(self.config.colors.background))
+                .alignment(Alignment::Center)
+                .block(Block::bordered());
+            frame.render_widget(Clear, popup_area);
+            frame.render_widget(dialog, popup_area);
         }
     }
 

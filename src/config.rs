@@ -41,6 +41,7 @@ pub struct GeneralConfig {
     pub todo_file: String,
     pub file_indent: usize,
     pub display_indent: usize,
+    pub autosave: bool,
 }
 
 impl Config {

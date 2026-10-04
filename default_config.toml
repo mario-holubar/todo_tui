@@ -1,7 +1,8 @@
 [general]
 todo_file = "todo.md" # Can be absolute or relative path
 file_indent = 4       # Number of spaces per indent in todo.md
-display_indent = 2     # Number of spaces per indent to render in the app
+display_indent = 2    # Number of spaces per indent to render in the app
+autosave = false      # Save changes immediately when any change is made (slower)
 
 [colors] # Ayu Dark defaults; named colors, palette indices ("0"-"255"), or "#RRGGBB"
 text = "#BFBDB6"
