@@ -421,11 +421,14 @@ impl TaskTree {
     }
 
     pub fn get_below(&self, id: NodeId) -> Option<NodeId> {
-        let node = self.get_node(id);
+        let mut node = self.get_node(id);
         if let Some(child) = node.first_child() { Some(child.id()) }
-        else if let Some(sibling) = node.next_sibling() { Some(sibling.id()) }
-        // TODO Keep walking up ancestors
-        else { node.parent().unwrap().next_sibling().map(|pibling| pibling.id()) }
+        else {
+            loop {
+                if let Some(sibling) = node.next_sibling() { return Some(sibling.id()); }
+                node = node.parent()?;
+            }
+        }
     }
 
     pub fn switch_with_prev_sibling(&mut self, id: NodeId) -> Option<NodeId> {
