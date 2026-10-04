@@ -122,6 +122,7 @@ pub enum Action {
     EditBeginning,
     EditClear,
     EditDone,
+    Cancel,
     TabNext,
     TabPrev,
     TabRename,
@@ -215,9 +216,9 @@ impl Tui {
         self.input_mode = InputMode::EditTab;
     }
 
-    fn finish_tab_edit(&mut self) -> bool {
+    fn finish_tab_edit(&mut self, cancel: bool) -> bool {
         let name = self.text_input.value().trim();
-        let confirmed = !name.is_empty();
+        let confirmed = !cancel && !name.is_empty();
         if !confirmed {
             if let Some(original) = self.tab_before_edit.take() {
                 self.tabs[self.active_tab].name = original;
@@ -334,6 +335,16 @@ impl Tui {
             self.tasks.set_title(self.selection, title);
             self.state_changed = true;
         };
+    }
+
+    fn cancel_editing(&mut self) {
+        let content = fs::read_to_string(&self.config.todo_file).unwrap_or_default();
+        let tab = self.pending_before_tab.take().unwrap_or(self.active_tab);
+        let path = self.pending_before_selection_path.take()
+            .unwrap_or_else(|| self.tasks.node_to_path(self.selection));
+        self.restore_document(&content, tab, &path);
+        self.state_changed = false;
+        self.input_mode = InputMode::Normal;
     }
 
     fn open_date_picker(&mut self, is_start_date: bool) {
@@ -487,7 +498,9 @@ impl Tui {
                     if added && self.text_input.value().trim().is_empty() {
                         self.text_input = Input::new("todo".to_string());
                     }
-                    if self.finish_tab_edit() {
+                    if self.finish_tab_edit(false) {
+                        self.save_change(prev_selection_path.clone(), prev_tab);
+                        self.pending_before_selection_path = Some(self.tasks.node_to_path(self.selection));
                         self.selection = if self.tasks.is_root(self.selection) {
                             self.tasks.add_top_level()
                         } else {
@@ -498,12 +511,13 @@ impl Tui {
                     }
                 }
                 Action::EditDone => {
-                    self.finish_tab_edit();
+                    self.finish_tab_edit(false);
                 }
+                Action::Cancel => { self.finish_tab_edit(true); }
                 Action::MoveIn => self.move_tab(true),
                 Action::MoveOut => self.move_tab(false),
                 Action::Quit => {
-                    self.finish_tab_edit();
+                    self.finish_tab_edit(false);
                     quit = true;
                 }
                 _ => { self.text_input.handle_event(&Event::Key(key_event)); }
@@ -626,6 +640,11 @@ impl Tui {
             }
             Action::EditDone => {
                 self.finish_editing();
+            }
+            Action::Cancel => {
+                if self.input_mode == InputMode::Edit {
+                    self.cancel_editing();
+                }
             }
             Action::TabPrev => {
                 if self.active_tab > 0 { self.switch_tab(self.active_tab - 1); }

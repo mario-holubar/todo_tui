@@ -60,7 +60,7 @@ display_indent = 2     # Number of spaces per indent to render in the app
 
 [text_keymap]
 "Ctrl+d" = "Quit"
-"Ctrl+c" = "EditDone"
+"Ctrl+c" = "Cancel"
 "Enter" = "AddBelow"
 "Esc" = "EditDone"
 "Tab" = "MoveIn"
