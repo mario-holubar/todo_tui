@@ -33,6 +33,14 @@ struct DatePickerState {
     cursor_date: Date,
 }
 
+#[derive(Debug)]
+struct HistoryEntry {
+    before_content: String,
+    after_content: String,
+    before_selection_path: Vec<usize>,
+    after_selection_path: Vec<usize>,
+}
+
 impl DatePickerState {
     fn new(is_start_date: bool, initial_date: Option<Date>) -> Self {
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).date();
@@ -136,8 +144,9 @@ pub struct Tui {
     date_picker: Option<DatePickerState>,
     input_mode: InputMode,
     state_changed: bool,
-    undo_stack: Vec<(String, Vec<usize>)>,
-    redo_stack: Vec<(String, Vec<usize>)>,
+    undo_stack: Vec<HistoryEntry>,
+    redo_stack: Vec<HistoryEntry>,
+    pending_before_selection_path: Option<Vec<usize>>,
 }
 
 impl Tui {
@@ -166,6 +175,7 @@ impl Tui {
             state_changed: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            pending_before_selection_path: None,
         }
     }
 
@@ -296,6 +306,32 @@ impl Tui {
         }
     }
 
+    fn save_change(&mut self, previous_selection_path: Vec<usize>) {
+        if self.input_mode != InputMode::Normal || !self.state_changed {
+            return;
+        }
+
+        let before_content = fs::read_to_string(&self.config.todo_file).unwrap_or_default();
+        let after_content = self.tasks.to_string(self.config.file_indent);
+        if before_content != after_content {
+            let before_selection_path = self.pending_before_selection_path
+                .take()
+                .unwrap_or(previous_selection_path);
+            let after_selection_path = self.tasks.node_to_path(self.selection);
+            self.undo_stack.push(HistoryEntry {
+                before_content,
+                after_content: after_content.clone(),
+                before_selection_path,
+                after_selection_path,
+            });
+            self.redo_stack.clear();
+            fs::write(&self.config.todo_file, after_content).unwrap();
+        } else {
+            self.pending_before_selection_path = None;
+        }
+        self.state_changed = false;
+    }
+
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
         let prev_selection_path = self.tasks.node_to_path(self.selection);
@@ -303,6 +339,7 @@ impl Tui {
         // Handle date picker mode separately
         if self.input_mode == InputMode::DatePicker {
             self.update_date_picker(key_event);
+            self.save_change(prev_selection_path);
             return false;
         }
 
@@ -314,12 +351,23 @@ impl Tui {
         }.copied()
         .unwrap_or(Action::NoOp);
 
+        if matches!(action,
+            Action::Toggle | Action::MovePrev | Action::MoveNext | Action::MoveOut | Action::MoveIn
+            | Action::Delete | Action::PasteBelow | Action::PasteAbove
+            | Action::AddTop | Action::AddAbove | Action::AddBelow | Action::AddSubtask
+        )
+            && self.pending_before_selection_path.is_none()
+        {
+            self.pending_before_selection_path = Some(prev_selection_path.clone());
+        }
+
+        let mut should_quit = false;
         match action {
             Action::Quit => {
                 if self.input_mode == InputMode::Edit {
                     self.finish_editing();
                 }
-                return true;
+                should_quit = true;
             }
             Action::Toggle => {
                 self.tasks.toggle_completed(self.selection);
@@ -448,25 +496,21 @@ impl Tui {
                 }
             }
             Action::Undo => {
-                if let Some((prev_content, selection_path)) = self.undo_stack.pop() {
-                    let current_content = fs::read_to_string(&self.config.todo_file)
-                        .unwrap_or_default();
-                    self.redo_stack.push((current_content, selection_path.clone()));
-                    let (tasks, default_selection) = TaskTree::from_string(&prev_content, self.config.file_indent);
-                    self.selection = tasks.resolve_path(&selection_path).unwrap_or(default_selection);
+                if let Some(entry) = self.undo_stack.pop() {
+                    let (tasks, default_selection) = TaskTree::from_string(&entry.before_content, self.config.file_indent);
+                    self.selection = tasks.resolve_path(&entry.before_selection_path).unwrap_or(default_selection);
                     self.tasks = tasks;
-                    fs::write(&self.config.todo_file, &prev_content).unwrap();
+                    fs::write(&self.config.todo_file, &entry.before_content).unwrap();
+                    self.redo_stack.push(entry);
                 }
             }
             Action::Redo => {
-                if let Some((next_content, selection_path)) = self.redo_stack.pop() {
-                    let current_content = fs::read_to_string(&self.config.todo_file)
-                        .unwrap_or_default();
-                    self.undo_stack.push((current_content, selection_path.clone()));
-                    let (tasks, default_selection) = TaskTree::from_string(&next_content, self.config.file_indent);
-                    self.selection = tasks.resolve_path(&selection_path).unwrap_or(default_selection);
+                if let Some(entry) = self.redo_stack.pop() {
+                    let (tasks, default_selection) = TaskTree::from_string(&entry.after_content, self.config.file_indent);
+                    self.selection = tasks.resolve_path(&entry.after_selection_path).unwrap_or(default_selection);
                     self.tasks = tasks;
-                    fs::write(&self.config.todo_file, &next_content).unwrap();
+                    fs::write(&self.config.todo_file, &entry.after_content).unwrap();
+                    self.undo_stack.push(entry);
                 }
             }
             Action::NoOp if self.input_mode == InputMode::Edit => {
@@ -484,22 +528,9 @@ impl Tui {
             Action::NoOp => {}
         }
 
-        // Save state if changed
-        if self.input_mode == InputMode::Normal && self.state_changed {
-            let old_content = fs::read_to_string(&self.config.todo_file)
-                .unwrap_or_default();
-            if self.undo_stack.last() != Some(&(old_content.clone(), prev_selection_path.clone())) {
-                self.undo_stack.push((old_content, prev_selection_path));
-            }
-            self.redo_stack.clear();
+        self.save_change(prev_selection_path);
 
-            let content = self.tasks.to_string(self.config.file_indent);
-            let (_reconstructed_tasks, _) = TaskTree::from_string(&content, self.config.file_indent);
-            fs::write(&self.config.todo_file, content).unwrap();
-            self.state_changed = false;
-        }
-
-        false
+        should_quit
     }
 
     fn cursor_position(&self) -> (u16, u16) {
