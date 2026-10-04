@@ -1,3 +1,4 @@
+[general]
 todo_file = "todo.md" # Can be absolute or relative path
 file_indent = 4       # Number of spaces per indent in todo.md
 display_indent = 2     # Number of spaces per indent to render in the app

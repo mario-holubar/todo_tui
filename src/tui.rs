@@ -176,7 +176,7 @@ impl Tui {
     fn serialize(&self) -> String {
         self.tabs.iter().enumerate().map(|(index, tab)| {
             let tasks = if index == self.active_tab { &self.tasks } else { &tab.tasks };
-            document::serialize_section(&tab.name, tasks, self.config.file_indent)
+            document::serialize_section(&tab.name, tasks, self.config.general.file_indent)
         }).collect::<Vec<_>>().join("\n")
     }
 
@@ -201,12 +201,12 @@ impl Tui {
     }
 
     fn restore_document(&mut self, content: &str, tab_index: usize, selection_path: &[usize]) {
-        self.tabs = document::parse(content, self.config.file_indent);
+        self.tabs = document::parse(content, self.config.general.file_indent);
         self.active_tab = 0;
         let first = self.tabs.remove(0);
         self.selection = first.selection;
         self.tasks = first.tasks;
-        self.tabs.insert(0, Tab::new(first.name, self.config.file_indent));
+        self.tabs.insert(0, Tab::new(first.name, self.config.general.file_indent));
         self.switch_tab(tab_index.min(self.tabs.len() - 1));
         self.selection = self.tasks.resolve_path(selection_path).unwrap_or(self.selection);
     }
@@ -215,7 +215,7 @@ impl Tui {
         self.tab_edit_previous = self.active_tab;
         if added {
             let index = self.active_tab + 1;
-            self.tabs.insert(index, Tab::new("todo".to_string(), self.config.file_indent));
+            self.tabs.insert(index, Tab::new("todo".to_string(), self.config.general.file_indent));
             self.switch_tab(index);
             self.tab_before_edit = None;
             self.text_input = Input::new(String::new());
@@ -263,21 +263,21 @@ impl Tui {
         let config = Config::load().unwrap();
 
         // Read the todo file
-        let content = match fs::read_to_string(&config.todo_file) {
+        let content = match fs::read_to_string(&config.general.todo_file) {
             Ok(s) => s,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let initial = "# todo\n";
-                fs::write(&config.todo_file, initial).unwrap();
+                fs::write(&config.general.todo_file, initial).unwrap();
                 initial.to_string()
             }
             Err(e) => panic!("Failed to read todo file: {e}"),
         };
-        let mut tabs = document::parse(&content, config.file_indent);
+        let mut tabs = document::parse(&content, config.general.file_indent);
         let active = tabs.remove(0);
         let tasks = active.tasks;
         let selection = active.selection;
-        tabs.insert(0, Tab::new(active.name, config.file_indent));
-        let serialized = document::serialize(&document::parse(&content, config.file_indent), config.file_indent);
+        tabs.insert(0, Tab::new(active.name, config.general.file_indent));
+        let serialized = document::serialize(&document::parse(&content, config.general.file_indent), config.general.file_indent);
         let expected = if content.lines().any(|line| line.starts_with("# ")) {
             content.clone()
         } else {
@@ -315,7 +315,7 @@ impl Tui {
             return;
         }
         let mut lines = Vec::new();
-        self.tasks.serialize_node(&mut lines, self.tasks.get_node(self.selection), self.config.file_indent);
+        self.tasks.serialize_node(&mut lines, self.tasks.get_node(self.selection), self.config.general.file_indent);
         self.clipboard = Some(lines.join("\n") + "\n");
     }
 
@@ -353,7 +353,7 @@ impl Tui {
     }
 
     fn cancel_editing(&mut self) {
-        let content = fs::read_to_string(&self.config.todo_file).unwrap_or_default();
+        let content = fs::read_to_string(&self.config.general.todo_file).unwrap_or_default();
         let tab = self.pending_before_tab.take().unwrap_or(self.active_tab);
         let path = self.pending_before_selection_path.take()
             .unwrap_or_else(|| self.tasks.node_to_path(self.selection));
@@ -472,7 +472,7 @@ impl Tui {
             return;
         }
 
-        let before_content = fs::read_to_string(&self.config.todo_file).unwrap_or_default();
+        let before_content = fs::read_to_string(&self.config.general.todo_file).unwrap_or_default();
         let after_content = self.serialize();
         if before_content != after_content {
             let before_selection_path = self.pending_before_selection_path
@@ -489,7 +489,7 @@ impl Tui {
                 after_tab: self.active_tab,
             });
             self.redo_stack.clear();
-            fs::write(&self.config.todo_file, after_content).unwrap();
+            fs::write(&self.config.general.todo_file, after_content).unwrap();
         } else {
             self.pending_before_selection_path = None;
             self.pending_before_tab = None;
@@ -765,7 +765,7 @@ impl Tui {
             Action::Delete => {
                 if self.tasks.is_root(self.selection) && self.tasks.all_ids().is_empty() {
                     if self.tabs.len() == 1 {
-                        fs::remove_file(&self.config.todo_file).unwrap();
+                        fs::remove_file(&self.config.general.todo_file).unwrap();
                         return true;
                     }
                     let deleted = self.active_tab;
@@ -785,27 +785,27 @@ impl Tui {
             }
             Action::PasteBelow => {
                 if let Some(ref content) = self.clipboard {
-                    self.selection = self.tasks.paste_branch_below(self.selection, content, self.config.file_indent);
+                    self.selection = self.tasks.paste_branch_below(self.selection, content, self.config.general.file_indent);
                     self.state_changed = true;
                 }
             }
             Action::PasteAbove => {
                 if let Some(ref content) = self.clipboard {
-                    self.selection = self.tasks.paste_branch_above(self.selection, content, self.config.file_indent);
+                    self.selection = self.tasks.paste_branch_above(self.selection, content, self.config.general.file_indent);
                     self.state_changed = true;
                 }
             }
             Action::Undo => {
                 if let Some(entry) = self.undo_stack.pop() {
                     self.restore_document(&entry.before_content, entry.before_tab, &entry.before_selection_path);
-                    fs::write(&self.config.todo_file, &entry.before_content).unwrap();
+                    fs::write(&self.config.general.todo_file, &entry.before_content).unwrap();
                     self.redo_stack.push(entry);
                 }
             }
             Action::Redo => {
                 if let Some(entry) = self.redo_stack.pop() {
                     self.restore_document(&entry.after_content, entry.after_tab, &entry.after_selection_path);
-                    fs::write(&self.config.todo_file, &entry.after_content).unwrap();
+                    fs::write(&self.config.general.todo_file, &entry.after_content).unwrap();
                     self.undo_stack.push(entry);
                 }
             }
@@ -844,7 +844,7 @@ impl Tui {
         // Column: 1 (left border) + indent prefix + 1 (marker) + 1 (space after marker)
         let node = self.tasks.get_node(self.selection);
         let indent = node.ancestors().count() - 1;
-        let col: u16 = (1 + indent * self.config.display_indent + 1 + 1
+        let col: u16 = (1 + indent * self.config.general.display_indent + 1 + 1
             + self.text_input.cursor()) as u16;
         (col, row)
     }
@@ -859,7 +859,7 @@ impl Tui {
         let area = frame.area();
 
         let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
-        let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width, &self.search_query);
+        let lines = self.tasks.display(self.config.general.display_indent, self.selection, inner_width, &self.search_query);
         let visible_height = area.height.saturating_sub(2) as usize;
         if visible_height == 0 || lines.len() <= visible_height {
             self.scroll_offset = 0;
