@@ -7,6 +7,7 @@ autosave = false      # Save changes immediately when any change is made (slower
 [colors] # Ayu Dark defaults; named colors, palette indices ("0"-"255"), or "#RRGGBB"
 text = "#BFBDB6"
 background = "#0B0E14"
+border = "#6C7380"
 completed = "#565B66"
 overdue = "#F07178"
 upcoming = "#FFB454"

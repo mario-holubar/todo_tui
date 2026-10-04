@@ -21,6 +21,7 @@ pub struct Config {
 pub struct Colors {
     pub text: Color,
     pub background: Color,
+    pub border: Color,
     pub completed: Color,
     pub overdue: Color,
     pub upcoming: Color,

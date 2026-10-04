@@ -961,6 +961,7 @@ impl Tui {
         }).collect();
         let mut block = Block::default()
             .borders(Borders::ALL)
+            .border_style(Style::default().fg(self.config.colors.border))
             .title(Line::from(titles));
         if unsaved {
             block = block.title_top(Line::from(Span::styled(" * ", Style::default().fg(self.config.colors.upcoming))).right_aligned());
@@ -991,7 +992,7 @@ impl Tui {
             let dialog = Paragraph::new("Save changes before quitting?\n[S] Save  [D] Discard  [Esc] Cancel")
                 .style(Style::default().fg(self.config.colors.text).bg(self.config.colors.background))
                 .alignment(Alignment::Center)
-                .block(Block::bordered());
+                .block(Block::bordered().border_style(Style::default().fg(self.config.colors.border)));
             frame.render_widget(Clear, popup_area);
             frame.render_widget(dialog, popup_area);
         }
@@ -1033,6 +1034,7 @@ impl Tui {
             .block(
                 Block::bordered()
                     .style(base_style)
+                    .border_style(Style::default().fg(self.config.colors.border))
                     .title(Span::styled(title, Style::default().fg(self.config.colors.text).bold())),
             );
 
