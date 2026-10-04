@@ -1,5 +1,4 @@
 # todo
-- [ ] search
 - [ ] small ux things
     - [ ] move selection down after completing task?
     - [ ] arrow keys

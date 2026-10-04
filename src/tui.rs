@@ -4,7 +4,7 @@ use ratatui::{
     prelude::*,
     crossterm::{
         cursor::MoveTo,
-        event::{self, Event, KeyEvent},
+        event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
         execute,
     },
     layout::{Constraint, Layout as RatatuiLayout, Rect},
@@ -26,6 +26,7 @@ pub enum InputMode {
     Edit,
     EditTab,
     DatePicker,
+    Search,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -140,6 +141,8 @@ pub enum Action {
     DatePickerClear,
     Undo,
     Redo,
+    SearchForward,
+    SearchBackward,
     NoOp,
 }
 
@@ -155,6 +158,9 @@ pub struct Tui {
     text_input: Input,
     clipboard: Option<String>,
     date_picker: Option<DatePickerState>,
+    search_query: String,
+    search_origin: Option<NodeId>,
+    search_forward: bool,
     input_mode: InputMode,
     state_changed: bool,
     undo_stack: Vec<HistoryEntry>,
@@ -287,6 +293,9 @@ impl Tui {
             text_input: Input::new(String::new()),
             clipboard: None,
             date_picker: None,
+            search_query: String::new(),
+            search_origin: None,
+            search_forward: true,
             input_mode: InputMode::Normal,
             state_changed: false,
             undo_stack: Vec::new(),
@@ -483,8 +492,62 @@ impl Tui {
         self.state_changed = false;
     }
 
+    fn search_next(&mut self, from: NodeId, forward: bool) {
+        let ids = self.tasks.all_ids();
+        if ids.is_empty() || self.search_query.is_empty() {
+            self.selection = from;
+            return;
+        }
+        let start = ids.iter().position(|id| *id == from).unwrap_or(0);
+        for step in 1..=ids.len() {
+            let index = if forward {
+                (start + step) % ids.len()
+            } else {
+                (start + ids.len() - step) % ids.len()
+            };
+            if self.tasks.get_task(ids[index]).title.contains(&self.search_query) {
+                self.selection = ids[index];
+                return;
+            }
+        }
+        self.selection = self.search_origin.unwrap_or(from);
+    }
+
+    fn update_search(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Enter => {
+                self.input_mode = InputMode::Normal;
+                self.search_origin = None;
+                self.search_query.clear();
+            }
+            KeyCode::Esc => {
+                if let Some(origin) = self.search_origin.take() {
+                    self.selection = origin;
+                }
+                self.search_query.clear();
+                self.input_mode = InputMode::Normal;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                let forward = key_event.code == KeyCode::Tab
+                    && !key_event.modifiers.contains(KeyModifiers::SHIFT);
+                self.search_next(self.selection, forward);
+            }
+            _ => {
+                self.text_input.handle_event(&Event::Key(key_event));
+                self.search_query = self.text_input.value().to_string();
+                if let Some(origin) = self.search_origin {
+                    self.search_next(origin, self.search_forward);
+                }
+            }
+        }
+    }
+
     // Process input. Returns true if the loop should exit.
     fn update(&mut self, key_event: KeyEvent) -> bool {
+        if self.input_mode == InputMode::Search {
+            self.update_search(key_event);
+            return false;
+        }
         let prev_selection_path = self.tasks.node_to_path(self.selection);
         let prev_tab = self.active_tab;
 
@@ -540,6 +603,7 @@ impl Tui {
             InputMode::Normal => self.config.normal_keymap.dispatch(key_event),
             InputMode::EditTab => unreachable!(),
             InputMode::DatePicker => unreachable!(),
+            InputMode::Search => unreachable!(),
         }.copied()
         .unwrap_or(Action::NoOp);
 
@@ -736,6 +800,13 @@ impl Tui {
                     self.undo_stack.push(entry);
                 }
             }
+            Action::SearchForward | Action::SearchBackward => {
+                self.search_origin = Some(self.selection);
+                self.search_forward = action == Action::SearchForward;
+                self.search_query.clear();
+                self.text_input = Input::new(String::new());
+                self.input_mode = InputMode::Search;
+            }
             Action::NoOp if self.input_mode == InputMode::Edit => {
                 // Input text
                 self.text_input.handle_event(&Event::Key(key_event));
@@ -779,7 +850,7 @@ impl Tui {
         let area = frame.area();
 
         let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
-        let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width);
+        let lines = self.tasks.display(self.config.display_indent, self.selection, inner_width, &self.search_query);
         let text = Text::from(lines);
         let titles: Vec<Span> = self.tabs.iter().enumerate().map(|(index, tab)| {
             let name = if index == self.active_tab && self.input_mode == InputMode::EditTab {
@@ -794,11 +865,14 @@ impl Tui {
             };
             Span::styled(format!(" {} ", name), style)
         }).collect();
-        let paragraph = Paragraph::new(text).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Line::from(titles)),
-        );
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .title(Line::from(titles));
+        if self.input_mode == InputMode::Search {
+            let prefix = if self.search_forward { '/' } else { '?' };
+            block = block.title_bottom(format!("{}{}", prefix, self.search_query));
+        }
+        let paragraph = Paragraph::new(text).block(block);
         frame.render_widget(paragraph, area);
 
         // Draw date picker overlay if active
@@ -861,8 +935,10 @@ impl Tui {
                 }
                 terminal.draw(|frame| self.draw(frame))?;
 
-                if matches!(self.input_mode, InputMode::Edit | InputMode::EditTab) {
-                    let (col, row) = if self.input_mode == InputMode::EditTab {
+                if matches!(self.input_mode, InputMode::Edit | InputMode::EditTab | InputMode::Search) {
+                    let (col, row) = if self.input_mode == InputMode::Search {
+                        (2 + self.text_input.cursor() as u16, terminal.size()?.height.saturating_sub(1))
+                    } else if self.input_mode == InputMode::EditTab {
                         self.tab_cursor_position()
                     } else {
                         self.cursor_position()

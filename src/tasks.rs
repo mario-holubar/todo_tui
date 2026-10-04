@@ -226,7 +226,22 @@ impl TaskTree {
         self.insert_branch_at_sibling(id, content, false, indent_width)
     }
 
-    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize) {
+    fn title_spans(spans: &mut Vec<Span<'static>>, prefix: &str, title: &str, style: Style, query: &str) {
+        spans.push(Span::styled(prefix.to_string(), style));
+        if query.is_empty() {
+            spans.push(Span::styled(title.to_string(), style));
+            return;
+        }
+        let mut end = 0;
+        for (index, matched) in title.match_indices(query) {
+            spans.push(Span::styled(title[end..index].to_string(), style));
+            spans.push(Span::styled(matched.to_string(), style.fg(Color::Black).bg(Color::Yellow)));
+            end = index + matched.len();
+        }
+        spans.push(Span::styled(title[end..].to_string(), style));
+    }
+
+    pub fn display_node(&self, lines: &mut Vec<Line>, node: NodeRef<'_, Task>, indent_width: usize, selected_id: NodeId, width: usize, query: &str) {
         let indent = node.ancestors().count() - 1;
         let task = node.value();
         let is_first_actionable = self.is_first_actionable(node.id());
@@ -314,7 +329,8 @@ impl TaskTree {
         let prefix = "\u{00A0}".repeat(indent * indent_width);
         let marker = if node.value().completed { "◉" } else { "◯" };
         let title = &node.value().title;
-        let title_content = format!("{}{} {}", prefix, marker, title);
+        let title_prefix = format!("{}{} ", prefix, marker);
+        let title_content = format!("{}{}", title_prefix, title);
         let title_width = title_content.chars().count();
 
         // If there are dates and enough room, right-justify them; otherwise inline after title
@@ -325,17 +341,15 @@ impl TaskTree {
             // Right-justified dates with padding between title and dates
             let gap = remaining - date_width;
             let gap_fill = "\u{00A0}".repeat(gap);
-            spans.push(Span::styled(title_content, style));
+            Self::title_spans(&mut spans, &title_prefix, title, style, query);
             spans.push(Span::styled(gap_fill, style));
             for ds in date_spans {
                 spans.push(ds);
             }
         } else {
             // No dates or not enough room — just the title
-            let content = title_content;
-            let content_width = content.chars().count();
-            spans.push(Span::styled(content, style));
-            let fill_remaining = width.saturating_sub(content_width);
+            Self::title_spans(&mut spans, &title_prefix, title, style, query);
+            let fill_remaining = width.saturating_sub(title_width);
             if fill_remaining > 0 {
                 let fill = "\u{00A0}".repeat(fill_remaining);
                 spans.push(Span::styled(fill, style));
@@ -345,14 +359,14 @@ impl TaskTree {
         lines.push(Line::from(spans));
 
         for child in node.children() {
-            self.display_node(lines, child, indent_width, selected_id, width);
+            self.display_node(lines, child, indent_width, selected_id, width, query);
         }
     }
 
-    pub fn display(&self, indent_width: usize, selected_id: NodeId, width: usize) -> Vec<Line<'_>> {
+    pub fn display(&self, indent_width: usize, selected_id: NodeId, width: usize, query: &str) -> Vec<Line<'_>> {
         let mut lines: Vec<Line> = Vec::new();
         for child in self.tasks.root().children() {
-            self.display_node(&mut lines, child, indent_width, selected_id, width);
+            self.display_node(&mut lines, child, indent_width, selected_id, width, query);
         }
         lines
     }
