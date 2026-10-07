@@ -262,9 +262,7 @@ impl Tui {
         confirmed
     }
 
-    pub fn new() -> Tui {
-        let config = Config::load().unwrap();
-
+    pub fn new(config: Config) -> Tui {
         // Read the todo file
         let content = match fs::read_to_string(&config.general.todo_file) {
             Ok(s) => s,
