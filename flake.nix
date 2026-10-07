@@ -11,6 +11,13 @@
             let
                 pkgs = nixpkgs.legacyPackages.${system};
             in {
+                packages.default = pkgs.rustPlatform.buildRustPackage {
+                    pname = "todo_tui";
+                    version = "0.1.0";
+                    src = ./.;
+                    cargoLock.lockFile = ./Cargo.lock;
+                };
+
                 devShells = {
                     default = with pkgs;
 

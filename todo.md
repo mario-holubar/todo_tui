@@ -7,6 +7,6 @@
     - [ ] load config file at runtime
         - [ ] partial config support
     - [ ] proper error handling
-    - [ ] nix install
+    - [x] nix install
     - [ ] finish readme
     - [ ] video for readme
