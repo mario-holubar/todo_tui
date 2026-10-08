@@ -4,8 +4,8 @@
         - [ ] move selection down after completing task
         - [ ] fallback to global todo.md if local doesn't exist
         - [ ] (check code for more possible settings)
-    - [ ] load config file at runtime
-        - [ ] partial config support
+    - [x] load config file at runtime
+        - [x] partial config support
     - [ ] proper error handling
     - [x] nix install
     - [ ] finish readme

@@ -146,7 +146,10 @@ pub enum Action {
     Redo,
     SearchForward,
     SearchBackward,
-    NoOp,
+    #[serde(alias = "NoOp")]
+    Noop,
+    #[serde(skip)]
+    Unbound,
 }
 
 #[derive(Debug)]
@@ -406,7 +409,7 @@ impl Tui {
     fn update_date_picker(&mut self, key_event: KeyEvent) -> bool {
         let action = self.config.date_picker_keymap.dispatch(key_event)
             .copied()
-            .unwrap_or(Action::NoOp);
+            .unwrap_or(Action::Unbound);
 
         match action {
             Action::Quit => {
@@ -464,7 +467,7 @@ impl Tui {
                 self.date_picker = None;
                 self.input_mode = InputMode::Normal;
             }
-            Action::NoOp => {}
+            Action::Unbound => {}
             _ => {} // Unhandled actions are ignored
         }
         false
@@ -620,7 +623,7 @@ impl Tui {
         if self.input_mode == InputMode::EditTab {
             let action = self.config.text_keymap.dispatch(key_event)
                 .copied()
-                .unwrap_or(Action::NoOp);
+                .unwrap_or(Action::Unbound);
             let mut quit = false;
             match action {
                 Action::AddBelow => {
@@ -650,6 +653,7 @@ impl Tui {
                     self.finish_tab_edit(false);
                     quit = true;
                 }
+                Action::Noop => {}
                 _ => { self.text_input.handle_event(&Event::Key(key_event)); }
             }
             self.save_change(prev_selection_path, prev_tab);
@@ -672,7 +676,7 @@ impl Tui {
             InputMode::Search => unreachable!(),
             InputMode::QuitConfirm => unreachable!(),
         }.copied()
-        .unwrap_or(Action::NoOp);
+        .unwrap_or(Action::Unbound);
 
         if matches!(action,
             Action::Toggle | Action::MovePrev | Action::MoveNext | Action::MoveOut | Action::MoveIn
@@ -883,7 +887,7 @@ impl Tui {
                 self.text_input = Input::new(String::new());
                 self.input_mode = InputMode::Search;
             }
-            Action::NoOp if self.input_mode == InputMode::Edit => {
+            Action::Unbound if self.input_mode == InputMode::Edit => {
                 // Input text
                 self.text_input.handle_event(&Event::Key(key_event));
                 let mut task = self.tasks.get_task(self.selection).clone();
@@ -895,7 +899,8 @@ impl Tui {
             | Action::DatePickerClear => {
                 // Only handled in date picker mode
             }
-            Action::NoOp => {}
+            Action::Noop => {}
+            Action::Unbound => {}
         }
 
         self.save_change(prev_selection_path, prev_tab);
